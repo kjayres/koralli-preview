@@ -1,6 +1,6 @@
 const TAU = Math.PI * 2;
 const INTERVAL = 6.1;
-const SPEED = .78;
+const SPEED = .624;
 const BLUE = '36,78,255';
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
