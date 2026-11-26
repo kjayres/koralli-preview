@@ -4,7 +4,7 @@
 // Greek craftsmen signed their work, the maker's name and ΕΠΟΙΗΣΕΝ, "made this". The letters are
 // shallow and still: faintly readable to someone who looks, and nothing that draws the eye. Nothing
 // else in the reef is moved to make room for it.
-import { reefFloorHeight } from './reef-terrain.mjs?v=6e3097a890fa';
+import { reefFloorHeight } from './reef-terrain.mjs?v=a4b692340dda';
 
 const TAU = Math.PI * 2;
 const WATER = [12, 22, 48], PALE = [143, 165, 255];

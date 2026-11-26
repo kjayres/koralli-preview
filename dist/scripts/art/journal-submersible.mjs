@@ -5,8 +5,8 @@
 // in the same projection, in a pilot's seat, facing the way the craft is going, both hands on the yoke.
 // It says where we are: not on the reef any more, but down where things have to be gone and looked at.
 // The drawing is built as the cards build theirs, then painted to the canvas; all of it follows from time.
-import { makeProjector, isoPrimitives, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=6e3097a890fa';
-import { tuckedElbows } from './service-figures.mjs?v=6e3097a890fa';
+import { makeProjector, isoPrimitives, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=a4b692340dda';
+import { tuckedElbows } from './service-figures.mjs?v=a4b692340dda';
 
 const TAU = Math.PI * 2;
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
@@ -19,6 +19,11 @@ const hash = n => { const value = Math.sin(n * 127.1 + 311.7) * 43758.5453123; r
 export const SUBMERSIBLE = { cycle: 62, crossing: 44, lead: 13, still: 2, beam: 1.75, slope: 20 * Math.PI / 180 };
 // The cards' paper, shade, glass and line, as they appear by lamplight at depth.
 export const DEEP = { [PAPER]: '#16305A', [SHADE]: '#102648', [GLASS]: '#2A5596', [BLUE]: '#B4C5F4' };
+// Its lines keep to the weight and the strength of the animals of this water, whatever size the craft
+// is drawn at: the usual outline is the squid's and the fishes' strong line, a little over half a
+// pixel, and far fainter than a card's ink. Only the lines are quietened; the shapes are as they were.
+export const LINE = { weight: .58 / .9, least: .38, strength: .4 };
+const BODY = new Set([DEEP[PAPER], DEEP[SHADE], DEEP[GLASS]]);
 
 // The cards' projection, turned a little further side-on so the craft's length runs across the page.
 const p = makeProjector({ originX: 0, originY: 0, centerX: 0, centerY: 0, angle: -28, scale: 1, pitch: .43 });
@@ -105,7 +110,7 @@ export function craftMarkup() {
   // The collar that holds the sphere, then the glass itself and the cabin inside it: floor and seat.
   behind += turned([[bow - 5.5, 21.4], [bow + .5, 21.4]], { extra: 'stroke-width=".85"' }) + flat(around(bow + .5, 21.4), SHADE, 'stroke-width=".7"');
   const rim = p.sphereOutline(sphere.centre, sphere.radius, 32), centre = p(...sphere.centre);
-  behind += iso.polygon(rim, GLASS, 'fill-opacity=".34" stroke-width=".9"');
+  behind += iso.polygon(rim, GLASS, 'fill-opacity=".34" stroke="none"');
   behind += flat(oval([sphere.centre[0], 0, floor], Math.sqrt(sphere.radius ** 2 - (AXIS - floor) ** 2) - .3), SHADE, 'stroke-width=".6" stroke-opacity=".7"');
   const seat = body(0, -.6, 17.8), back = body(0, -4.6, 0)[0];
   behind += flat([[back, 6.2, seat[2] - 1], ...Array.from({ length: 11 }, (_, i) => [back, 6.2 * Math.cos(i * Math.PI / 10), seat[2] + 12 + 5.5 * Math.sin(i * Math.PI / 10)]), [back, -6.2, seat[2] - 1]], PAPER, 'stroke-width=".7"');
@@ -221,7 +226,11 @@ export function drawJournalSubmersible(ctx, width, height, seconds = 0, options 
         if (item.closed) ctx.closePath();
       }
       if (item.fill && item.fill !== 'none') { ctx.fillStyle = item.fill; ctx.globalAlpha = pose.alpha * item.fillAlpha; ctx.fill(); }
-      if (item.stroke && item.stroke !== 'none') { ctx.strokeStyle = item.stroke; ctx.lineWidth = Math.max(.5, item.width * scale); ctx.globalAlpha = pose.alpha * item.strokeAlpha; ctx.stroke(); }
+      if (item.stroke && item.stroke !== 'none') {
+        // A stroke in a body colour is the gap an arm keeps from what is behind it, so it stays solid.
+        ctx.strokeStyle = item.stroke; ctx.lineWidth = Math.max(LINE.least, item.width * LINE.weight);
+        ctx.globalAlpha = pose.alpha * item.strokeAlpha * (BODY.has(item.stroke) ? 1 : LINE.strength); ctx.stroke();
+      }
     }
   };
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -269,7 +278,7 @@ export function drawJournalSubmersible(ctx, width, height, seconds = 0, options 
   paint(STILL_PARTS.ahead);
 
   // What moves on the craft: the propeller in its duct, and its lights.
-  ctx.strokeStyle = DEEP[BLUE]; ctx.globalAlpha = pose.alpha; ctx.lineWidth = Math.max(.6, .85 * scale);
+  ctx.strokeStyle = DEEP[BLUE]; ctx.globalAlpha = pose.alpha * LINE.strength; ctx.lineWidth = Math.max(LINE.least, .85 * LINE.weight);
   ctx.beginPath();
   const hub = at([DUCT.to - .5, 0, AXIS]);
   for (let blade = 0; blade < 3; blade++) {
@@ -282,11 +291,11 @@ export function drawJournalSubmersible(ctx, width, height, seconds = 0, options 
   light([LAMP[0] + .1, LAMP[1], LAMP[2]], 1.6, .55 + .4 * pose.lit);
   light(MAST, 1.2, .55 + .35 * (Math.sin(time * 2.1) > .86 ? 1 : 0));
   // A few bubbles rise from the propeller and fall behind.
-  ctx.strokeStyle = DEEP[BLUE]; ctx.lineWidth = .55;
+  ctx.strokeStyle = DEEP[BLUE]; ctx.lineWidth = .42;
   const stern = at([DUCT.from - 1, 0, AXIS + 4]);
   for (let i = 0; i < 6; i++) {
     const age = wrap(time * .3 + i / 6, 1);
-    ctx.globalAlpha = .5 * (1 - age);
+    ctx.globalAlpha = .8 * LINE.strength * (1 - age);
     ctx.beginPath(); ctx.arc(stern[0] + (6 + age * 58) * scale + 3 * Math.sin(time * 1.3 + i * 2), stern[1] - age * 52 * scale - 3, (1 + 1.7 * age) * scale + .3, 0, TAU); ctx.stroke();
   }
   ctx.restore();
