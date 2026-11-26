@@ -27,7 +27,7 @@
 @media(max-width:759px) {
   .journal-article { padding-top:150px; padding-bottom:65px; }
   .article-heading h1 { font-size:clamp(34px,8.5vw,48px); margin:28px 0 22px; }
-  .article-byline { font-size:10px; gap:8px 20px; }
+  .article-byline { font-size:11px; gap:8px 20px; }
   .article-body { margin-top:32px; font-size:16px; }
   .article-body h2 { font-size:27px; }
   .article-body h3 { font-size:22px; }
