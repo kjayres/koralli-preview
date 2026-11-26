@@ -13,8 +13,9 @@ const during = (time, [start, end]) => smooth((time - start) / (end - start));
 const p = makeProjector({ originX: 280, originY: 212, centerX: 100, centerY: 83, angle: -14, scale: 2.05, pitch: .43 });
 const iso = isoPrimitives(p);
 const SPLIT = '<!--service-hands-->';
-// Hard hats take the one warm accent the homepage cards already use, for the welder's sparks.
-const HAT = '#FFD166';
+// Hard hats take the one warm accent the homepage cards already use, for the welder's sparks,
+// with a deeper tone for the brim and the side of the shell turned away from the light.
+const HAT = '#FFD166', HAT_SHADE = '#EDB44A';
 // Carrying or hanging, the robot's elbows point down and a little back, close to its body.
 const tucked = (side, { right, forward }) => [right[0] * side * .25 - forward[0] * .25, right[1] * side * .25 - forward[1] * .25, -1];
 
@@ -276,33 +277,47 @@ function drip(time) {
   return out;
 }
 
-// A hard hat: a brim with a peak to the front, a dome over it and a ridge from front to back.
+// A hard hat: a tall rounded shell worn low on the head, a narrow brim with a short peak to the
+// front, and three ribs over the crown. The side turned from the light is toned, like every other
+// solid in these scenes, so it reads as a dome and not a disc.
 // `size` is half its width, half its depth and its height; `heading` is the way its wearer faces.
 function hardHat(centre, [across, deep, tall], heading, stroke) {
   const forward = [Math.sin(heading), Math.cos(heading)], right = [Math.cos(heading), -Math.sin(heading)];
   const at = (u, v, h) => p(centre[0] + right[0] * u + forward[0] * v, centre[1] + right[1] * u + forward[1] * v, centre[2] + h);
-  const brim = Array.from({ length: 20 }, (_, i) => {
-    const angle = i * TAU / 20, reach = 1.12 + .36 * Math.max(0, Math.sin(angle)) ** 2;
+  const brim = Array.from({ length: 24 }, (_, i) => {
+    const angle = i * TAU / 24, reach = 1.15 + .34 * Math.max(0, Math.sin(angle)) ** 3;
     return at(Math.cos(angle) * across * reach, Math.sin(angle) * deep * reach, 0);
   });
-  const dome = [0, 22, 45, 68, 86].flatMap(degrees => {
+  const shell = [], toned = [];
+  for (const degrees of [0, 15, 30, 45, 60, 75, 88]) {
     const rise = degrees * Math.PI / 180;
-    return Array.from({ length: 16 }, (_, i) => at(Math.cos(i * TAU / 16) * across * Math.cos(rise), Math.sin(i * TAU / 16) * deep * Math.cos(rise), tall * Math.sin(rise)));
-  });
-  const ridge = Array.from({ length: 9 }, (_, i) => { const a = (.14 + .72 * i / 8) * Math.PI; return at(0, Math.cos(a) * deep, Math.sin(a) * tall).join(','); });
+    for (let i = 0; i < 20; i++) {
+      const angle = i * TAU / 20, u = Math.cos(angle) * across * Math.cos(rise), v = Math.sin(angle) * deep * Math.cos(rise), h = tall * Math.sin(rise);
+      const point = at(u, v, h), nu = u / across ** 2, nv = v / deep ** 2, nh = h / tall ** 2;
+      shell.push(point);
+      // Faces that look along +x are the shaded ones throughout the service scenes.
+      if ((right[0] * nu + forward[0] * nv) / Math.hypot(nu, nv, nh) > .36) toned.push(point);
+    }
+  }
+  const rib = offset => {
+    const span = Math.sqrt(1 - offset * offset);
+    return Array.from({ length: 9 }, (_, i) => { const a = (.1 + .8 * i / 8) * Math.PI; return at(offset * across, Math.cos(a) * deep * span, Math.sin(a) * tall * span).join(','); });
+  };
   const line = `stroke="${stroke}" stroke-width=".9"`;
-  return iso.polygon(brim, HAT, line) + iso.polygon(hull(dome), HAT, line)
-    + `<path d="M${ridge.join(' L')}" fill="none" stroke="${stroke}" stroke-width=".6" stroke-opacity=".75"/>`;
+  return iso.polygon(brim, HAT_SHADE, line) + iso.polygon(hull(shell), HAT, line)
+    + iso.polygon(hull(toned), HAT_SHADE, 'stroke="none" fill-opacity=".8"')
+    + [-.5, 0, .5].map(offset => `<path d="M${rib(offset).join(' L')}" fill="none" stroke="${stroke}" stroke-width=".55" stroke-opacity="${offset ? .45 : .75}"/>`).join('')
+    + iso.polygon(hull(shell), 'none', line);
 }
-// A person's head is a sphere of radius 3.35 above the shoulders; the hat sits over its upper half.
+// A person's head is a sphere of radius 3.35 above the shoulders; the hat comes down over its upper half.
 function personHat(figure, lean) {
   const size = 3.35 * figure.scale, head = local(figure, 0, lean * 1.05 + .2, 40.8);
-  return hardHat([head[0], head[1], head[2] + size * .3], [size * 1.13, size * 1.13, size], figure.heading, CORAL);
+  return hardHat([head[0], head[1], head[2] + size * .1], [size * 1.09, size * 1.09, size * 1.28], figure.heading, CORAL);
 }
 // The robot's sits on its flat head, with the antenna's tip showing through the crown.
 function robotHat(figure, y) {
-  const s = figure.scale, [cx, cy] = p(figure.x, y, 46.7 * s);
-  return hardHat([figure.x, y, 42.3 * s], [5 * s, 4 * s, 3.5 * s], figure.heading, BLUE)
+  const s = figure.scale, [cx, cy] = p(figure.x, y, 47.4 * s);
+  return hardHat([figure.x, y, 41.9 * s], [4.9 * s, 3.9 * s, 4.6 * s], figure.heading, BLUE)
     + `<circle cx="${cx}" cy="${cy}" r="${(1.45 * s).toFixed(2)}" fill="${GLASS}" stroke="${BLUE}" stroke-width=".95"/>`;
 }
 

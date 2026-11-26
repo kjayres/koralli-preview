@@ -341,7 +341,7 @@ test('hands stay on the lever, the section and the plan, and within reach', () =
   // Everyone on the job wears a hard hat: one each, in every frame, drawn over its wearer's head.
   for (const phase of [0, .09, .3, FLOW_STILL, .9]) {
     const markup = flowMarkup(phase), hats = markup.split('fill="#FFD166"').length - 1;
-    assert.equal(hats, 6, 'A brim and a dome for each of the three');
+    assert.equal(hats, 3, 'One shell for each of the three');
     assert.ok(markup.lastIndexOf('fill="#FFD166"') > markup.lastIndexOf('data-human-3d'), 'The last hat is painted after the last figure');
   }
   assert.ok(pointing > 150 && pointing < 1200, 'The planner points the gap out, then goes back to the plan');
