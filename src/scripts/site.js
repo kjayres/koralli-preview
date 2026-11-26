@@ -1,4 +1,5 @@
 import { journalViewportBand } from './journal-viewport.mjs';
+import { thesisPace, THESIS_SCROLL } from './thesis-pace.mjs';
 
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const clamp = n => Math.min(1, Math.max(0, n));
@@ -439,9 +440,10 @@ function updateThesisScroll() {
   }
   const rect = thesisStage.getBoundingClientRect();
   if (rect.top > innerHeight || rect.bottom < 0) return;
-  const startTop = innerHeight * 0.42;
+  // The first card fills in as the section rises into view, so it is whole when the section is held.
+  const startTop = innerHeight * THESIS_SCROLL.from;
   const endTop = -(rect.height - innerHeight);
-  thesisProgress = clamp((startTop - rect.top) / Math.max(1, startTop - endTop));
+  thesisProgress = thesisPace(clamp((startTop - rect.top) / Math.max(1, startTop - endTop)));
   renderThesis(thesisProgress, thesisTime, false);
 }
 if (thesisStage) {

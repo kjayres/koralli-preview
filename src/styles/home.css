@@ -105,8 +105,10 @@
   border-top:1px solid var(--rule);
   background:var(--paper);
 }
+/* One window to hold the cards, plus the short hold across which the second card arrives
+   (THESIS_SCROLL.hold in scripts/thesis-pace.mjs). The first is complete before the hold begins. */
 .thesis-section.thesis-enhanced {
-  height:275svh;
+  height:160svh;
 }
 .thesis-sticky {
   max-width:1420px;

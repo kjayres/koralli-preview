@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import { journalViewportBand } from '../src/scripts/journal-viewport.mjs';
+import { thesisPace, THESIS_SCROLL } from '../src/scripts/thesis-pace.mjs';
+
+// The only modules site.js may load up front: small, pure helpers. Artwork is always loaded on demand.
+const upfront = { './journal-viewport.mjs': { journalViewportBand }, './thesis-pace.mjs': { thesisPace, THESIS_SCROLL } };
 
 const source = await fs.readFile('src/scripts/site.js', 'utf8');
 const probes = '\nexport { canvasStates, paint, renderBuilding, schedule, prepareArtwork };';
@@ -63,8 +67,9 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
     await imported.link(()=>{});await imported.evaluate();return imported;
   }});
   await mod.link(path=>{
-    assert.equal(path,'./journal-viewport.mjs');
-    return new vm.SyntheticModule(['journalViewportBand'],function(){this.setExport('journalViewportBand',journalViewportBand);},{context});
+    assert.ok(upfront[path],`Unexpected up-front import ${path}`);
+    const entries=Object.entries(upfront[path]);
+    return new vm.SyntheticModule(entries.map(([k])=>k),function(){for(const [k,v]of entries)this.setExport(k,v);},{context});
   });await mod.evaluate();
   const settle=()=>new Promise(resolve=>setImmediate(resolve));
   await settle();
