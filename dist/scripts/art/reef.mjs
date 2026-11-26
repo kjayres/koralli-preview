@@ -1,11 +1,11 @@
-import { ORGANIC_CORALS } from './reef-organic.mjs?v=d7b3b861c46e';
-import { reefHabitat, reefFloorHeight as floorHeight } from './reef-habitat.mjs?v=d7b3b861c46e';
-import { reefTerrain, reefRockFragments } from './reef-terrain.mjs?v=d7b3b861c46e';
-import { reefCurrent, reefPlankton } from './reef-current.mjs?v=d7b3b861c46e';
-import { movingTurtle } from './reef-turtle.mjs?v=d7b3b861c46e';
-import { fishPose } from './reef-fish-motion.mjs?v=d7b3b861c46e';
-import { reefSurfaceSteps, reefActorPreparationSteps, paintReefActors, reefInverseDepthAt } from './reef-surface.mjs?v=d7b3b861c46e';
-import { reefRelic, paintRelic } from './reef-relic.mjs?v=d7b3b861c46e';
+import { ORGANIC_CORALS } from './reef-organic.mjs?v=6e3097a890fa';
+import { reefHabitat, reefFloorHeight as floorHeight } from './reef-habitat.mjs?v=6e3097a890fa';
+import { reefTerrain, reefRockFragments } from './reef-terrain.mjs?v=6e3097a890fa';
+import { reefCurrent, reefPlankton } from './reef-current.mjs?v=6e3097a890fa';
+import { movingTurtle } from './reef-turtle.mjs?v=6e3097a890fa';
+import { fishPose } from './reef-fish-motion.mjs?v=6e3097a890fa';
+import { reefSurfaceSteps, reefActorPreparationSteps, paintReefActors, reefInverseDepthAt } from './reef-surface.mjs?v=6e3097a890fa';
+import { reefRelic, paintRelic } from './reef-relic.mjs?v=6e3097a890fa';
 
 const TAU = Math.PI * 2;
 const WATER = [12, 22, 48];
@@ -407,8 +407,8 @@ export class Reef {
       ctx.beginPath(); ctx.arc(point.x, point.y, point.material === 'fish' ? .85 : s.reefCompact ? .65 : .8, 0, TAU); ctx.fill();
       visibleNodes += 1;
     }
-    // Baked into a still or an export; the live reef draws it each frame over its cached solids.
-    if (this.props.relic !== false) paintRelic(ctx, cam, s.reefScene.relic, time);
+    // The signature is as still as the stone, so it is painted once with the solids it is cut into.
+    paintRelic(ctx, cam, s.reefScene.relic);
     ctx.restore();
     s.reefFrameStats = { triangles: triangles.length, visibleNodes, fish: this.props.fish === false ? 0 : 4,
       turtles: this.props.turtles === false ? 0 : 2 };
@@ -453,7 +453,6 @@ export class Reef {
         :mix(WATER,point.material==='coral'?CORAL:PALE,fog*.9);
       ctx.beginPath();ctx.arc(point.x,point.y,point.material==='fish'?.85:s.reefCompact?.65:.8,0,TAU);ctx.fill();visibleNodes++;
     }
-    paintRelic(ctx,cam,s.reefScene.relic,time);
     ctx.restore();
     s.reefFrameStats={triangles:cache.stats.triangles+faces.length,visibleNodes:cache.stats.visibleNodes+visibleNodes,
       fish:this.props.fish===false?0:4,turtles:this.props.turtles===false?0:2,
@@ -469,7 +468,7 @@ export class Reef {
     if(!paint)throw new Error('Reef cache canvas is unavailable.');
     paint.setTransform(dpr,0,0,dpr,0,0);
     const state={...s,ctx:paint,reefSkipCache:true},still=new Reef();
-    still.props={fish:false,turtles:false,motion:false,relic:false};
+    still.props={fish:false,turtles:false,motion:false};
     yield* still.directReefSteps(state);
     return {w:s.w,h:s.h,dpr,scene:s.reefScene,canvas,surface:state.reefSurfaceStats,stats:state.reefFrameStats};
   }

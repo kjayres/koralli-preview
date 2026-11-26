@@ -1,10 +1,10 @@
 // The three service cards on Our Work. Each scene is drawn by its own module, from a phase between
 // 0 and 1, with the same line, paper and figures as the homepage cards:
 // the work-flow as pipework, the glass delivery van, and the agent on the trial course.
-import { BLUE } from './thesis-cards.mjs?v=d7b3b861c46e';
-import { flowMarkup, flowPose, FLOW_STEPS, FLOW_STILL } from './service-flow.mjs?v=d7b3b861c46e';
-import { vanMarkup, vanPose, VAN_STEPS, VAN_STILL } from './service-van.mjs?v=d7b3b861c46e';
-import { courseMarkup, coursePose } from './service-course.mjs?v=d7b3b861c46e';
+import { BLUE } from './thesis-cards.mjs?v=6e3097a890fa';
+import { flowMarkup, flowPose, FLOW_STEPS, FLOW_STILL } from './service-flow.mjs?v=6e3097a890fa';
+import { vanMarkup, vanPose, VAN_STEPS, VAN_STILL } from './service-van.mjs?v=6e3097a890fa';
+import { courseMarkup, coursePose } from './service-course.mjs?v=6e3097a890fa';
 
 const wrap = phase => ((phase % 1) + 1) % 1;
 const group = body => `<g stroke="${BLUE}" stroke-width=".9" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;

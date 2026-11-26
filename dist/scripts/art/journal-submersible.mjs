@@ -1,7 +1,13 @@
-// A small research submersible crosses the open water of the Views from the Reef opening, an agent
-// at its controls behind the dome and a lamp lighting the water ahead. It says where we are: not on
-// the reef any more, but down in the dark where things have to be gone and looked at. Native wire
-// geometry in CSS pixels, drawn like the animals around it; everything follows from the time.
+// A research submersible crosses the open water of the Views from the Reef opening, a lamp lighting
+// the water ahead. It is a rounded craft: a glass sphere at the bow, a teardrop hull behind it, a
+// sail, fins and a ducted propeller, all turned or curved and none of it boxed. In the sphere sits
+// the same agent that works through the homepage and the service cards, drawn by the same function
+// in the same projection, in a pilot's seat, facing the way the craft is going, both hands on the yoke.
+// It says where we are: not on the reef any more, but down where things have to be gone and looked at.
+// The drawing is built as the cards build theirs, then painted to the canvas; all of it follows from time.
+import { makeProjector, isoPrimitives, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=6e3097a890fa';
+import { tuckedElbows } from './service-figures.mjs?v=6e3097a890fa';
+
 const TAU = Math.PI * 2;
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
 const smooth = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
@@ -9,76 +15,188 @@ const wrap = (value, span) => ((value % span) + span) % span;
 const mix = (a, b, t) => a + (b - a) * t;
 const hash = n => { const value = Math.sin(n * 127.1 + 311.7) * 43758.5453123; return value - Math.floor(value); };
 
-/** One pass every CYCLE seconds, taking CROSSING of them; the page opens with the craft already in view. */
-export const SUBMERSIBLE = { cycle: 62, crossing: 44, lead: 13, still: 2, beam: 2.5, slope: 24 * Math.PI / 180 };
+/** One pass every `cycle` seconds, taking `crossing` of them; the page opens with the craft already in view. */
+export const SUBMERSIBLE = { cycle: 62, crossing: 44, lead: 13, still: 2, beam: 1.75, slope: 20 * Math.PI / 180 };
+// The cards' paper, shade, glass and line, as they appear by lamplight at depth.
+export const DEEP = { [PAPER]: '#16305A', [SHADE]: '#102648', [GLASS]: '#2A5596', [BLUE]: '#B4C5F4' };
 
-// The craft, in units of its own length: x forward, y down, z towards the viewer.
-function build() {
-  const fine = [], firm = [], pilot = [];
-  const ring = (x, y, ry, rz, count = 12) => Array.from({ length: count + 1 }, (_, i) => [x, y + Math.cos(i * TAU / count) * ry, Math.sin(i * TAU / count) * rz]);
-  // Hull: a rounded body behind the dome, tapering to the thruster.
-  const stations = [[-.40, .034, .03], [-.33, .084, .074], [-.22, .117, .104], [-.08, .128, .114], [.04, .121, .109], [.13, .094, .086]], spine = -.035;
-  const rings = stations.map(([x, ry, rz]) => ring(x, spine, ry, rz));
-  rings.forEach(points => fine.push(points));
-  for (const k of [1, 3, 5, 7, 9, 11]) fine.push(rings.map(points => points[k]));
-  firm.push(rings.map(points => points[0]), rings.map(points => points[6]));
-  // The dome: a glass sphere, drawn as its outline and three sections.
-  const dome = [.25, -.012, 0], r = .165, circle = (plane, radius = r, offset = 0, count = 24) => Array.from({ length: count + 1 }, (_, i) => {
-    const a = i * TAU / count, u = Math.cos(a) * radius, v = Math.sin(a) * radius;
-    return plane === 'side' ? [dome[0] + u, dome[1] + v, offset] : plane === 'level' ? [dome[0] + u, dome[1] + offset, v] : [dome[0] + offset, dome[1] + u, v];
-  });
-  firm.push(circle('side'));
-  fine.push(circle('level'), circle('across'), circle('across', Math.sqrt(r * r - .1 * .1), .1), ring(.115, -.02, .118, .105));
-  // The pilot: an agent's square head with its visor to the front, antenna, shoulders and one arm on the stick.
-  const box = ([cx, cy, cz], [hx, hy, hz]) => {
-    const c = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]].map(([a, b, d]) => [cx + a * hx, cy + b * hy, cz + d * hz]);
-    return [[c[0], c[1], c[2], c[3], c[0]], [c[4], c[5], c[6], c[7], c[4]], [c[0], c[4]], [c[1], c[5]], [c[2], c[6]], [c[3], c[7]]];
-  };
-  const head = [.262, -.07, 0];
-  pilot.push(...box(head, [.043, .038, .043]), ...box([.246, .04, 0], [.052, .042, .056]));
-  pilot.push([[head[0] + .0435, head[1] - .018, -.03], [head[0] + .0435, head[1] - .018, .03], [head[0] + .0435, head[1] + .012, .03], [head[0] + .0435, head[1] + .012, -.03], [head[0] + .0435, head[1] - .018, -.03]]);
-  pilot.push([[head[0], head[1] - .038, 0], [head[0], head[1] - .082, 0]], [[head[0], head[1] + .038, 0], [head[0], head[1] + .0, 0]]);
-  pilot.push([[.262, .012, .056], [.305, .052, .062], [.336, .03, .052]], [[.336, .03, .052], [.338, .082, .05]], [[.31, .084, -.05], [.366, .084, -.05], [.366, .084, .06], [.31, .084, .06]]);
-  // Pontoons with their struts, the fairing and mast on top, and the lamp bar under the dome.
-  for (const side of [-1, 1]) {
-    const z = side * .108, tube = (y, dz) => [[-.3, .137 + y, z + dz], [.22, .137 + y, z + dz]];
-    fine.push(ring(-.3, .137, .034, .034, 8).map(([x, y, w]) => [x, y, w + z]), ring(.22, .137, .034, .034, 8).map(([x, y, w]) => [x, y, w + z]), tube(0, .034), tube(0, -.034));
-    firm.push(tube(.034, 0));
-    fine.push([[-.2, .07, z * .8], [-.2, .105, z]], [[.07, .075, z * .8], [.07, .105, z]]);
-  }
-  firm.push([[-.21, -.148, 0], [-.15, -.212, 0], [.0, -.212, 0], [.07, -.156, 0]]);
-  fine.push([[-.15, -.212, 0], [-.15, -.15, 0]], [[.0, -.212, 0], [.0, -.156, 0]], [[-.075, -.212, 0], [-.075, -.29, 0]]);
-  const lamp = [.325, .142, 0];
-  for (const side of [-1, 1]) firm.push(ring(lamp[0], lamp[1], .026, .026, 10).map(([x, y, w]) => [x, y, w + side * .07]));
-  // The thruster shroud at the stern.
-  fine.push(ring(-.418, spine, .07, .066), [[-.4, spine - .034, 0], [-.455, spine - .076, 0]], [[-.4, spine + .034, 0], [-.455, spine + .076, 0]]);
-  firm.push(ring(-.455, spine, .078, .072));
-  const visor = [[head[0] + .0437, head[1] - .018, -.03], [head[0] + .0437, head[1] - .018, .03], [head[0] + .0437, head[1] + .012, .03], [head[0] + .0437, head[1] + .012, -.03]];
-  return { fine, firm, pilot, visor, lamp, stern: [-.455, spine, 0], mastTop: [-.075, -.29, 0], antenna: [head[0], head[1] - .082, 0], arm: [[.17, .128, .092], [.33, .2, .1], [.42, .152, .1]] };
+// The cards' projection, turned a little further side-on so the craft's length runs across the page.
+const p = makeProjector({ originX: 0, originY: 0, centerX: 0, centerY: 0, angle: -28, scale: 1, pitch: .43 });
+const iso = isoPrimitives(p);
+
+// The craft in its own units. Its length runs along x with the bow at +x; y is across it, the near
+// side at +y; z is up. Everything round is turned about the centreline, at the height AXIS.
+const AXIS = 30;
+export const CRAFT = { sphere: { centre: [5, 0, AXIS], radius: 25 }, bow: -15, stern: -112, girth: 20, floor: AXIS - 19, forward: [1, 0, 0] };
+/** The hull's radius along its length: full behind the sphere, drawn in to a blunt tail. */
+export const girth = x => { const t = clamp((CRAFT.bow - x) / (CRAFT.bow - CRAFT.stern)); return 3.6 + (CRAFT.girth - 3.6) * Math.sqrt(1 - t ** 2.4); };
+// The pilot: the cards' agent at the size the sphere allows, seated so that its feet rest on the cabin floor.
+const PILOT = { x: CRAFT.sphere.centre[0] - 2.5, y: 0, z: CRAFT.floor - 7.2, scale: 1, heading: Math.atan2(CRAFT.forward[0], CRAFT.forward[1]) };
+const body = (across, ahead, up) => [
+  PILOT.x + (Math.cos(PILOT.heading) * across + Math.sin(PILOT.heading) * ahead) * PILOT.scale,
+  PILOT.y + (-Math.sin(PILOT.heading) * across + Math.cos(PILOT.heading) * ahead) * PILOT.scale, PILOT.z + up * PILOT.scale];
+const LAMP = [19, 13, 7.6], MAST = [-52, 0, AXIS + 46], RUNNER = 13;
+const MIDDLE = p(-42, 0, AXIS), SPAN = 190;
+
+// Where the craft's length, width and height point on the page, and from them the two things a
+// turned body needs: the angle round the centreline at which its underside meets its outline, and
+// the angle round an upright at which its wall turns out of sight.
+const ZERO = p(0, 0, 0), heading = point => { const q = p(...point); return [q[0] - ZERO[0], q[1] - ZERO[1]]; };
+const ALONG = heading([1, 0, 0]), ACROSS = heading([0, 1, 0]), UP = heading([0, 0, 1]);
+const square = ([x, y]) => y * ALONG[0] - x * ALONG[1];
+const LIMB = Math.atan2(square(UP), square(ACROSS));
+const turn = (rx, ry) => Math.atan2(ACROSS[0] / rx, ALONG[0] / ry);
+
+function hull(points) {
+  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const bend = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const half = list => { const out = []; for (const point of list) { while (out.length > 1 && bend(out.at(-2), out.at(-1), point) <= 0) out.pop(); out.push(point); } return out.slice(0, -1); };
+  return [...half(sorted), ...half(sorted.reverse())];
 }
-const CRAFT = build();
+const flat = (points, fill, extra = '') => iso.polygon(points.map(point => p(...point)), fill, extra);
+const outline = points => hull(points.map(point => p(...point)));
+// A ring round the centreline (or round a line beside it), and a level oval.
+const around = (x, radius, { from = 0, to = TAU, count = 20, y = 0, z = AXIS } = {}) => Array.from({ length: count + 1 }, (_, i) => {
+  const a = from + (to - from) * i / count; return [x, y + radius * Math.cos(a), z + radius * Math.sin(a)];
+});
+const oval = ([x, y, z], rx, ry = rx, { from = 0, to = TAU, count = 20 } = {}) => Array.from({ length: count + 1 }, (_, i) => {
+  const a = from + (to - from) * i / count; return [x + rx * Math.cos(a), y + ry * Math.sin(a), z];
+});
+/** A body turned about the craft's length: lit from above, in shade along its belly, one clean outline. */
+function turned(sections, { extra = 'stroke-width=".9"', lit = .7, y = 0, z = AXIS } = {}) {
+  const from = LIMB + lit, whole = outline(sections.flatMap(([x, radius]) => around(x, radius, { count: 44, y, z })));
+  const above = outline(sections.flatMap(([x, radius]) => around(x, radius, { from, to: from + Math.PI, count: 12, y, z })));
+  return iso.polygon(whole, SHADE, 'stroke="none"') + iso.polygon(above, PAPER, 'stroke="none"') + iso.polygon(whole, 'none', extra);
+}
+/** An upright rounded body, narrowing or not: the part of its wall that faces forward is in shade. */
+function upright(foot, height, [rx, ry], [tx, ty] = [rx, ry], extra = 'stroke-width=".8"') {
+  const top = [foot[0], foot[1], foot[2] + height], edge = turn(rx, ry), whole = outline([...oval(foot, rx, ry), ...oval(top, tx, ty)]);
+  const facing = [...oval(foot, rx, ry, { from: edge, to: edge + 1.05, count: 8 }), ...oval(top, tx, ty, { from: edge + 1.05, to: edge, count: 8 })];
+  return iso.polygon(whole, PAPER, 'stroke="none"') + flat(facing, SHADE, 'stroke="none"') + flat(oval(top, tx, ty), PAPER, extra) + iso.polygon(whole, 'none', extra);
+}
+const tube = (a, b, radius, extra = 'stroke-width=".8"') => iso.polygon(hull([...p.sphereOutline(a, radius, 14), ...p.sphereOutline(b, radius, 14)]), PAPER, extra);
+// A round window set into the hull's skin, so it curves with it.
+const porthole = (x0, angle, radius) => Array.from({ length: 14 }, (_, i) => {
+  const a = i * TAU / 14, x = x0 + radius * Math.cos(a), r = girth(x), q = angle + radius * Math.sin(a) / r; return [x, r * Math.cos(q), AXIS + r * Math.sin(q)];
+});
+// One of four tail fins, swept back from the hull to carry the propeller's duct.
+const DUCT = { from: CRAFT.stern - 9, to: CRAFT.stern - 1, radius: 13.5 };
+const FIN = [[-86, null], [-99, 23], [-102.5, 25], [-109.5, 25], [-113, 22.5], [DUCT.to, DUCT.radius], [-107, null]];
+const fin = (cy, cz, fill) => flat(FIN.map(([x, out]) => { const d = out ?? girth(x) - 1; return [x, cy * d, AXIS + cz * d]; }), fill, 'stroke-width=".8"');
+const strut = (x, side) => iso.planLine([[x, side * RUNNER, 5], [x, side * RUNNER * .8, AXIS - Math.sqrt(girth(x) ** 2 - (RUNNER * .8) ** 2) + .5]], 'stroke-width="1.2"');
+
+/** Everything that never moves, in the order it is painted: far side first, near side last. */
+export function craftMarkup() {
+  const { sphere, bow, stern, floor } = CRAFT;
+  const sections = Array.from({ length: 17 }, (_, i) => { const x = bow + (stern - bow) * (1 - (1 - i / 16) ** 2); return [x, girth(x)]; });
+  // Under and behind the hull: the far runner, the two fins on the far side, and the propeller's duct.
+  let behind = tube([-80, -RUNNER, 3], [-30, -RUNNER, 3], 2.6);
+  for (const x of [-64, -36]) behind += strut(x, -1);
+  behind += fin(-1, 0, SHADE) + fin(0, -1, SHADE);
+  behind += turned([[DUCT.from, DUCT.radius], [DUCT.to, DUCT.radius]], { extra: 'stroke-width=".8"' }) + flat(around(DUCT.to, DUCT.radius - 1.4), SHADE, 'stroke-width=".7"');
+  // The hull, its seams and windows, the two fins that show, and the sail with its hatch and mast.
+  behind += turned(sections);
+  for (const x of [-27, -80]) behind += iso.planLine(around(x, girth(x), { from: LIMB, to: LIMB + Math.PI, count: 16 }), 'stroke-width=".6" stroke-opacity=".5"');
+  for (const x of [-38, -57]) behind += flat(porthole(x, .32, 4.2), GLASS, 'stroke-width=".75" fill-opacity=".75"');
+  behind += fin(0, 1, PAPER) + fin(1, 0, PAPER);
+  behind += upright([-47, 0, AXIS + 18], 13, [13, 6.5], [10.5, 5.2]);
+  behind += flat(oval([-44.5, 0, AXIS + 31.05], 4.6, 2.4, { count: 14 }), SHADE, 'stroke-width=".6"');
+  behind += iso.planLine([[MAST[0], 0, AXIS + 31], MAST], 'stroke-width="1"') + iso.planLine([[MAST[0], 0, MAST[2] - 5], [MAST[0] + 5.5, 0, MAST[2] - 5]], 'stroke-width=".7"');
+  // The collar that holds the sphere, then the glass itself and the cabin inside it: floor and seat.
+  behind += turned([[bow - 5.5, 21.4], [bow + .5, 21.4]], { extra: 'stroke-width=".85"' }) + flat(around(bow + .5, 21.4), SHADE, 'stroke-width=".7"');
+  const rim = p.sphereOutline(sphere.centre, sphere.radius, 32), centre = p(...sphere.centre);
+  behind += iso.polygon(rim, GLASS, 'fill-opacity=".34" stroke-width=".9"');
+  behind += flat(oval([sphere.centre[0], 0, floor], Math.sqrt(sphere.radius ** 2 - (AXIS - floor) ** 2) - .3), SHADE, 'stroke-width=".6" stroke-opacity=".7"');
+  const seat = body(0, -.6, 17.8), back = body(0, -4.6, 0)[0];
+  behind += flat([[back, 6.2, seat[2] - 1], ...Array.from({ length: 11 }, (_, i) => [back, 6.2 * Math.cos(i * Math.PI / 10), seat[2] + 12 + 5.5 * Math.sin(i * Math.PI / 10)]), [back, -6.2, seat[2] - 1]], PAPER, 'stroke-width=".7"');
+  behind += iso.planLine([[seat[0], 0, floor], [seat[0], 0, seat[2] - 2]], 'stroke-width="1.6"');
+  behind += upright([seat[0], 0, seat[2] - 2.2], 2.2, [5.6, 5.4], [5.6, 5.4], 'stroke-width=".7"');
+  // In front of the pilot: the near glass with the light on it, then the near runner and the lamp.
+  let ahead = iso.polygon(rim, GLASS, 'fill-opacity=".08" stroke-width="1.05"');
+  ahead += `<path d="M${rim.slice(25, 30).map(([x, y]) => `${(centre[0] + (x - centre[0]) * .86).toFixed(2)},${(centre[1] + (y - centre[1]) * .86).toFixed(2)}`).join(' L')}" fill="none" stroke="#DCE6FF" stroke-width="1.3" stroke-opacity=".42"/>`;
+  for (const x of [-64, -22]) ahead += strut(x, 1);
+  ahead += tube([-80, RUNNER, 3], [LAMP[0] - 6, RUNNER, 3], 2.6);
+  ahead += turned([[LAMP[0] - 6.5, 3], [LAMP[0], 3.7]], { y: LAMP[1], z: LAMP[2], extra: 'stroke-width=".8"' }) + flat(around(LAMP[0] + .05, 2.8, { y: LAMP[1], z: LAMP[2], count: 12 }), GLASS, 'stroke-width=".6"');
+  return { behind, ahead };
+}
+
+// The scenes' markup uses a small vocabulary: filled polygons, straight paths and circles. Read it
+// once into a list the canvas can paint, with each colour taken down to deep water.
+const attribute = (text, name) => { const found = text.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`)); return found ? found[1] : undefined; };
+const deep = colour => colour === undefined || colour === 'none' ? colour : DEEP[colour.toUpperCase()] || colour;
+export function displayList(markup) {
+  const items = [];
+  for (const [, tag, text] of markup.matchAll(/<(polygon|path|circle)\b([^>]*?)\/?>/g)) {
+    const item = { fill: deep(attribute(text, 'fill')), stroke: deep(attribute(text, 'stroke') ?? BLUE), width: Number(attribute(text, 'stroke-width') ?? .9),
+      fillAlpha: Number(attribute(text, 'fill-opacity') ?? 1), strokeAlpha: Number(attribute(text, 'stroke-opacity') ?? 1) };
+    if (tag === 'circle') item.circle = [Number(attribute(text, 'cx')), Number(attribute(text, 'cy')), Number(attribute(text, 'r'))];
+    else {
+      const numbers = (attribute(text, tag === 'polygon' ? 'points' : 'd') || '').match(/-?\d*\.?\d+(?:e-?\d+)?/g) || [];
+      item.points = [];
+      for (let i = 0; i + 1 < numbers.length; i += 2) item.points.push([Number(numbers[i]), Number(numbers[i + 1])]);
+      item.closed = tag === 'polygon' || /Z\s*$/i.test(attribute(text, 'd') || '');
+      if (tag === 'path' && item.fill === undefined) item.fill = 'none';
+      if (item.points.length < 2) continue;
+    }
+    items.push(item);
+  }
+  return items;
+}
+const STILL_PARTS = (() => { const { behind, ahead } = craftMarkup(); return { behind: displayList(behind), ahead: displayList(ahead) }; })();
+
+// The pilot sits square in its seat and steers: the yoke rocks a little one way and the other, and
+// its hands go with it. The pose is held for a moment at a time, so the figure is built a few
+// times a second and not on every frame.
+const pilots = new Map();
+export function pilotPose(time) {
+  const beat = Math.round(time * 8) / 8, rock = Math.round((1.1 * Math.sin(beat * .7) + .5 * Math.sin(beat * 1.9 + 1)) * 8) / 8;
+  const grip = body(0, 11.6, 25), column = [body(0, 14.2, 0)[0], 0, CRAFT.floor];
+  return {
+    beat, rock, heading: PILOT.heading, hips: body(0, 0, 18.2), seat: body(0, -.6, 17.8)[2],
+    // Near hand, then far hand: one rises as the other falls.
+    hands: [[grip[0], 4.6, grip[2] + rock], [grip[0], -4.6, grip[2] - rock]], yoke: [column, grip],
+    feet: [body(-2.4, 9.2, 7.2), body(2.4, 9.2, 7.2)],
+  };
+}
+/** The pilot as the cards would draw it: the shared agent, seated, hands on the yoke. */
+export function pilotMarkup(time) {
+  const pose = pilotPose(time);
+  // The yoke stands between the pilot's knees: a column from the floor and a bar across its top.
+  const yoke = iso.planLine(pose.yoke, 'stroke-width="1.5"') + iso.planLine([pose.hands[0], pose.yoke[1], pose.hands[1]], 'stroke-width="1.5"');
+  return robotMarkup(p, { x: PILOT.x, y: PILOT.y, z: PILOT.z, scale: PILOT.scale, heading: PILOT.heading,
+    leftTarget: pose.hands[0], rightTarget: pose.hands[1], footTargets: pose.feet, held: yoke, elbow: tuckedElbows });
+}
+function pilot(time) {
+  const key = pilotPose(time).rock;
+  if (!pilots.has(key)) {
+    if (pilots.size > 48) pilots.clear();
+    pilots.set(key, displayList(pilotMarkup(time)));
+  }
+  return pilots.get(key);
+}
 
 /** Where the craft is and whether it is in the water at this moment. */
 export function submersiblePose(width, height, seconds = 0, { compact = width < 700, reducedMotion = false, screen } = {}) {
   const elapsed = Number(seconds), time = reducedMotion ? SUBMERSIBLE.still : Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
   const phase = wrap(time + SUBMERSIBLE.lead, SUBMERSIBLE.cycle), progress = phase / SUBMERSIBLE.crossing;
-  const size = clamp(width / 1440, .66, 1.18), length = compact ? 124 : 205 * size, margin = length * .75;
+  const size = clamp(width / 1440, .66, 1.18), length = compact ? 172 : 290 * size, margin = length * .7;
   // It keeps to the open water between the navigation and the title, which sits at the foot of the
   // first screen: a little above the middle of that screen, with the slow rise and fall of a craft
   // trimming itself. `screen` is the height of the window; without it a usual laptop is assumed.
   const tall = Number.isFinite(screen) && screen > 0 ? screen : 800;
-  const depth = Math.min(height * .2, clamp(tall * .36, compact ? 205 : 215, compact ? 300 : 345));
+  const depth = Math.min(height * .2, clamp(tall * .36, compact ? 215 : 225, compact ? 300 : 340));
   const active = reducedMotion || phase <= SUBMERSIBLE.crossing;
   // The lamp comes up as the craft arrives and is dimmed before it leaves, so nothing appears or vanishes at once.
   const lit = reducedMotion ? 1 : smooth(phase / 3) * smooth((SUBMERSIBLE.crossing - phase) / 2.5);
   return {
-    x: mix(width + margin, -margin, Math.min(progress, 1)), y: depth + 7 * Math.sin(time * .31 + .6) + 2.5 * Math.sin(time * .83 + 2),
+    x: mix(width + margin, -margin, Math.min(progress, 1)), y: depth + 6 * Math.sin(time * .31 + .6) + 2 * Math.sin(time * .83 + 2),
     length, time, phase, progress, active, lit, compact,
-    pitch: .018 * Math.sin(time * .27 + 1.1) + .01 * Math.sin(time * .9), yaw: .34 + .05 * Math.sin(time * .11),
-    alpha: compact ? .38 : .42,
+    // Nose a touch down, as a craft holds itself when it is looking at the bottom.
+    pitch: -.05 + .012 * Math.sin(time * .27 + 1.1) + .006 * Math.sin(time * .9),
+    alpha: .92,
     // The whole drawing lies within this distance above and below its depth. The lamp beam reaches
-    // furthest: its length down its slope, plus its spread, from a lamp slung under the dome.
-    reach: length * (.2 + SUBMERSIBLE.beam * (Math.sin(SUBMERSIBLE.slope + .1) + .27)) + 16,
+    // furthest: its length down its slope, plus its spread, from a lamp at the craft's foot.
+    reach: length * (.34 + SUBMERSIBLE.beam * (Math.sin(SUBMERSIBLE.slope + .12) + .25)) + 16,
   };
 }
 
@@ -89,23 +207,32 @@ export function drawJournalSubmersible(ctx, width, height, seconds = 0, options 
   if (!pose.active) return;
   const { viewport } = options;
   if (viewport && (pose.y + pose.reach < viewport.top || pose.y - pose.reach > viewport.bottom)) return;
-  const { x, y, length, time } = pose, cy = Math.cos(pose.yaw), sy = Math.sin(pose.yaw), cp = Math.cos(pose.pitch), sp = Math.sin(pose.pitch);
-  // It travels to the left, so the model's forward axis is mirrored on screen.
-  const project = ([px, py, pz]) => {
-    const xx = px * cy + pz * sy, yy = py + pz * .24;
-    return [x - (xx * cp - yy * sp) * length, y + (xx * sp + yy * cp) * length];
+  const { x, y, length, time } = pose, scale = length / SPAN, cos = Math.cos(pose.pitch), sin = Math.sin(pose.pitch);
+  // The drawing faces right; the craft travels to the left, so it is mirrored about its middle.
+  const place = ([px, py]) => { const u = px - MIDDLE[0], v = py - MIDDLE[1]; return [x - (u * cos - v * sin) * scale, y + (u * sin + v * cos) * scale]; };
+  const at = point => place(p(...point));
+  const paint = items => {
+    for (const item of items) {
+      ctx.beginPath();
+      if (item.circle) { const centre = place(item.circle); ctx.arc(centre[0], centre[1], Math.max(.3, item.circle[2] * scale), 0, TAU); }
+      else {
+        const first = place(item.points[0]); ctx.moveTo(first[0], first[1]);
+        for (let i = 1; i < item.points.length; i++) { const next = place(item.points[i]); ctx.lineTo(next[0], next[1]); }
+        if (item.closed) ctx.closePath();
+      }
+      if (item.fill && item.fill !== 'none') { ctx.fillStyle = item.fill; ctx.globalAlpha = pose.alpha * item.fillAlpha; ctx.fill(); }
+      if (item.stroke && item.stroke !== 'none') { ctx.strokeStyle = item.stroke; ctx.lineWidth = Math.max(.5, item.width * scale); ctx.globalAlpha = pose.alpha * item.strokeAlpha; ctx.stroke(); }
+    }
   };
-  const path = points => { const first = project(points[0]); ctx.moveTo(first[0], first[1]); for (let i = 1; i < points.length; i++) { const p = project(points[i]); ctx.lineTo(p[0], p[1]); } };
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-  // The beam: a soft cone ahead and below, strongest at the lamp, in a few steps so no gradient is needed.
-  const origin = project(CRAFT.lamp), slope = SUBMERSIBLE.slope + .035 * Math.sin(time * .4) + pose.pitch;
+  // The beam: a soft cone ahead and below, strongest at the lamp.
+  const origin = at(LAMP), slope = SUBMERSIBLE.slope + .03 * Math.sin(time * .4) - pose.pitch;
   const aim = [-Math.cos(slope), Math.sin(slope)], across = [-aim[1], aim[0]], far = SUBMERSIBLE.beam * length;
   const along = (s, w) => [origin[0] + aim[0] * far * s + across[0] * far * s * w, origin[1] + aim[1] * far * s + across[1] * far * s * w];
   if (pose.lit > .01) {
-    const end = along(1, 0), cones = [[.235, .028], [.185, .026], [.135, .03], [.085, .034], [.04, .04]];
+    const end = along(1, 0), cones = [[.215, .03], [.165, .028], [.115, .032], [.07, .036], [.032, .042]];
     if (typeof ctx.createLinearGradient === 'function') {
-      // Each cone fades smoothly to nothing along its length.
       for (const [spread, strength] of cones) {
         const fade = ctx.createLinearGradient(origin[0], origin[1], end[0], end[1]);
         fade.addColorStop(0, `rgba(201,216,255,${(strength * pose.lit).toFixed(4)})`);
@@ -129,45 +256,38 @@ export function drawJournalSubmersible(ctx, width, height, seconds = 0, options 
     // Marine snow caught in the beam, drifting back past the craft.
     ctx.fillStyle = '#DCE6FF';
     for (let i = 0; i < (pose.compact ? 9 : 15); i++) {
-      const s = wrap(hash(i * 13 + 5) - time * (.012 + hash(i * 13 + 6) * .01), 1) * .9 + .06, w = (hash(i * 13 + 7) * 2 - 1) * .2;
+      const s = wrap(hash(i * 13 + 5) - time * (.012 + hash(i * 13 + 6) * .01), 1) * .9 + .06, w = (hash(i * 13 + 7) * 2 - 1) * .18;
       const speck = along(s, w + .02 * Math.sin(time * .5 + i));
-      ctx.globalAlpha = pose.lit * .5 * (1 - s) ** .7 * (1 - Math.abs(w) / .24);
+      ctx.globalAlpha = pose.lit * .5 * (1 - s) ** .7 * (1 - Math.abs(w) / .22);
       ctx.beginPath(); ctx.arc(speck[0], speck[1], .55 + hash(i * 13 + 8) * .6, 0, TAU); ctx.fill();
     }
   }
 
-  // The hull and frame as fine wire, then its outline, then the pilot a little firmer still.
-  ctx.strokeStyle = '#B5C4DF';
-  ctx.globalAlpha = pose.alpha * .5; ctx.lineWidth = .45; ctx.beginPath();
-  for (const line of CRAFT.fine) path(line);
+  // Far side, then the pilot inside the sphere, then the near side over them.
+  paint(STILL_PARTS.behind);
+  paint(pilot(time));
+  paint(STILL_PARTS.ahead);
+
+  // What moves on the craft: the propeller in its duct, and its lights.
+  ctx.strokeStyle = DEEP[BLUE]; ctx.globalAlpha = pose.alpha; ctx.lineWidth = Math.max(.6, .85 * scale);
+  ctx.beginPath();
+  const hub = at([DUCT.to - .5, 0, AXIS]);
+  for (let blade = 0; blade < 3; blade++) {
+    const angle = time * 4.2 + blade * TAU / 3, tip = at([DUCT.to - .5, Math.cos(angle) * (DUCT.radius - 2.2), AXIS + Math.sin(angle) * (DUCT.radius - 2.2)]);
+    ctx.moveTo(hub[0], hub[1]); ctx.lineTo(tip[0], tip[1]);
+  }
   ctx.stroke();
-  ctx.globalAlpha = pose.alpha; ctx.lineWidth = .62; ctx.beginPath();
-  for (const line of CRAFT.firm) path(line);
-  // The manipulator arm rests folded, its elbow easing a little as the craft moves.
-  const ease = .012 * Math.sin(time * .35), [shoulder, elbow, wrist] = CRAFT.arm, bent = [elbow[0], elbow[1] + ease, elbow[2]], held = [wrist[0], wrist[1] + ease * 1.6, wrist[2]];
-  path([shoulder, bent, held]); path([held, [held[0] + .04, held[1] - .022, held[2]]]); path([held, [held[0] + .036, held[1] + .026, held[2]]]);
-  // The propeller turns in its shroud.
-  const [sx, sy0] = [CRAFT.stern[0], CRAFT.stern[1]], turn = time * 4.2;
-  for (let blade = 0; blade < 3; blade++) { const a = turn + blade * TAU / 3; path([[sx, sy0, 0], [sx, sy0 + Math.cos(a) * .066, Math.sin(a) * .062]]); }
-  ctx.stroke();
-  ctx.strokeStyle = '#C6D3F2'; ctx.globalAlpha = Math.min(1, pose.alpha * 1.25); ctx.lineWidth = .66; ctx.beginPath();
-  for (const line of CRAFT.pilot) path(line);
-  ctx.stroke();
-  // Its visor, a pale panel on the front of its head, is what makes it an agent and not a box.
-  ctx.fillStyle = '#C6D3F2'; ctx.globalAlpha = pose.alpha * .55; ctx.beginPath(); path(CRAFT.visor); ctx.closePath(); ctx.fill();
-  // Small steady lights: the lamps, the mast head and the pilot's antenna.
-  ctx.fillStyle = '#DCE6FF';
-  const dot = (point, radius, alpha) => { const p = project(point); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(p[0], p[1], radius, 0, TAU); ctx.fill(); };
-  for (const side of [-1, 1]) dot([CRAFT.lamp[0], CRAFT.lamp[1], side * .07], Math.max(.9, length * .012), Math.min(1, pose.alpha * (1 + pose.lit)));
-  dot(CRAFT.mastTop, Math.max(.7, length * .007), pose.alpha * 1.1);
-  dot(CRAFT.antenna, Math.max(.7, length * .008), Math.min(1, pose.alpha * 1.3));
-  // A few bubbles rise from the stern and fall behind.
-  ctx.strokeStyle = '#B5C4DF'; ctx.lineWidth = .5;
-  const stern = project(CRAFT.stern);
-  for (let i = 0; i < 5; i++) {
-    const age = wrap(time * .32 + i / 5, 1);
-    ctx.globalAlpha = pose.alpha * .7 * (1 - age);
-    ctx.beginPath(); ctx.arc(stern[0] + (10 + age * 46) * length / 150 + 3 * Math.sin(time * 1.3 + i * 2), stern[1] - age * 44 * length / 150 - 3, (.9 + 1.5 * age) * length / 150 + .3, 0, TAU); ctx.stroke();
+  ctx.fillStyle = '#E3EBFF';
+  const light = (point, radius, alpha) => { const centre = at(point); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(centre[0], centre[1], Math.max(.8, radius * scale), 0, TAU); ctx.fill(); };
+  light([LAMP[0] + .1, LAMP[1], LAMP[2]], 1.6, .55 + .4 * pose.lit);
+  light(MAST, 1.2, .55 + .35 * (Math.sin(time * 2.1) > .86 ? 1 : 0));
+  // A few bubbles rise from the propeller and fall behind.
+  ctx.strokeStyle = DEEP[BLUE]; ctx.lineWidth = .55;
+  const stern = at([DUCT.from - 1, 0, AXIS + 4]);
+  for (let i = 0; i < 6; i++) {
+    const age = wrap(time * .3 + i / 6, 1);
+    ctx.globalAlpha = .5 * (1 - age);
+    ctx.beginPath(); ctx.arc(stern[0] + (6 + age * 58) * scale + 3 * Math.sin(time * 1.3 + i * 2), stern[1] - age * 52 * scale - 3, (1 + 1.7 * age) * scale + .3, 0, TAU); ctx.stroke();
   }
   ctx.restore();
 }

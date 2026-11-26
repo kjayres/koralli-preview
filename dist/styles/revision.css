@@ -31,11 +31,12 @@
 .people-note { color:#76716b; font-size:12px; max-width:530px; margin-top:20px; }
 .people-list { margin-top:45px; }
 .person { display:grid; grid-template-columns:1fr 1.2fr; gap:40px; border-top:1px solid var(--rule); padding:35px 0; align-items:start; }
-.person .eyebrow { font-size:10px; color:#6c6a63; letter-spacing:.1em; }
+.person .eyebrow { font-size:11px; color:#6c6a63; letter-spacing:.09em; }
 .person h3 { margin-top:12px; font-size:31px; }
 .person-bio { font-size:15px; color:#5c5b58; max-width:520px; }
 @media (min-width:760px) and (max-width:1050px) {
-  .site-header nav { gap:12px; font-size:10px; letter-spacing:.04em; }
+  .site-header nav { gap:12px; font-size:11px; letter-spacing:.03em; }
+  .person .eyebrow { letter-spacing:.03em; text-wrap:balance; }
   .site-header nav .nav-home { display:none; }
   .site-header nav a { min-height:44px; min-width:44px; }
   .site-header .nav-views { display:flex; }
@@ -78,7 +79,7 @@
   .people-section h2 { margin-top:0; }
   .person { grid-template-columns:1fr; gap:20px; padding:28px 0; }
   .person h3 { font-size:27px; }
-  .person .eyebrow { font-size:9px; }
+  .person .eyebrow { font-size:11px; letter-spacing:.03em; text-wrap:balance; }
   .person-bio { grid-column:1; font-size:14px; }
 }
 @media(max-height:600px) and (min-width:760px) {
@@ -112,7 +113,7 @@
 .reef-heading { max-width:1420px; margin:auto; padding:0 var(--gutter); display:flex; justify-content:space-between; align-items:center; gap:24px; }
 .reef-heading h2 { font:11px var(--label-font); letter-spacing:.16em; color:#a9b6cf; }
 .reef-heading>i { height:1px; background:rgba(243,240,232,.18); flex:1; }
-.reef-motion-toggle { background:transparent; border:1px solid rgba(243,240,232,.2); color:#a9b6cf; padding:10px 13px; font:10px var(--label-font); cursor:pointer; }
+.reef-motion-toggle { background:transparent; border:1px solid rgba(243,240,232,.2); color:#a9b6cf; padding:10px 13px; font:11px var(--label-font); cursor:pointer; }
 .reef-motion-toggle:hover { color:var(--paper); border-color:#b7c6ff; }
 .reef-section .reef-canvas { height:690px; margin-top:24px; }
 .reef-canvas canvas { position:absolute; inset:0; display:block; pointer-events:none; }
@@ -120,6 +121,8 @@
   .reef-section { padding-top:42px; }
   .reef-section .reef-canvas { height:570px; }
   .reef-heading { gap:14px; }
-  .reef-motion-toggle { font-size:9px; padding:11px 9px; }
+  .reef-motion-toggle { font-size:11px; padding:11px 9px; }
 }
 @media(prefers-reduced-motion:reduce) { .reef-motion-toggle { display:none; } }
+/* On the narrowest phones a label beside a portrait has about 170px. */
+@media (max-width:340px) { .person .eyebrow { letter-spacing:0; } }

@@ -1,4 +1,4 @@
-import { serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from './art/service-scenes.mjs?v=d7b3b861c46e';
+import { serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from './art/service-scenes.mjs?v=6e3097a890fa';
 
 export function initServices() {
   const section = document.querySelector('[data-services]');

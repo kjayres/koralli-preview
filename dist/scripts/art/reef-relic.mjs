@@ -2,22 +2,20 @@
 // sand, fallen against the limestone slab at the front of the reef. It is the same mesh and the same
 // blue as the rock around it, so it reads as part of the seabed. A signature is cut into its face as
 // Greek craftsmen signed their work, the maker's name and ΕΠΟΙΗΣΕΝ, "made this". The letters are
-// shallow and hard to see, until every seven seconds light crosses them. Nothing else in the reef is
-// moved to make room for it.
-import { reefFloorHeight } from './reef-terrain.mjs?v=d7b3b861c46e';
+// shallow and still: faintly readable to someone who looks, and nothing that draws the eye. Nothing
+// else in the reef is moved to make room for it.
+import { reefFloorHeight } from './reef-terrain.mjs?v=6e3097a890fa';
 
 const TAU = Math.PI * 2;
-const WATER = [12, 22, 48], PALE = [143, 165, 255], SILVER = [214, 227, 255];
-const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
+const WATER = [12, 22, 48], PALE = [143, 165, 255];
 const blend = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const rgb = colour => `rgb(${colour.map(Math.round).join(',')})`;
 const random = seed => { const value = Math.sin(seed * 91.73 + 17.19) * 41738.31; return value - Math.floor(value); };
 
-/** The signature, a line to each row of the stone, and how often and for how long the light crosses it. */
+/** The signature, a line to each row of the stone. */
 export const INSCRIPTION = { wide: ['ΚΙΕΡΑΝ ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ'], compact: ['ΚΙΕΡΑΝ', 'ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ'] };
-export const SHIMMER_EVERY = 7, SHIMMER_LASTS = 1.5;
-/** How visible a cut letter is at rest, as a share of the reef's line colour: fainter than the mesh around it. */
-export const RESTING = .2;
+/** How visible a cut letter is, as a share of the reef's line colour: about as strong as the rock's own mesh. */
+export const RESTING = .34;
 
 // Letters cut as plain strokes, each in a cell one unit high, set on a square grid as in a
 // stoichedon inscription. A word break is marked with two points, as early inscriptions did.
@@ -124,39 +122,24 @@ export function reefRelic(rocks, compact = false) {
   };
 }
 
-/** How brightly a letter is lit, from 0 to 1, by where it sits across the stone (0 to 1) and the time. */
-export function shimmer(seconds, across) {
-  const since = ((seconds % SHIMMER_EVERY) + SHIMMER_EVERY) % SHIMMER_EVERY, band = .22;
-  if (since >= SHIMMER_LASTS) return 0;
-  const front = -band + since / SHIMMER_LASTS * (1 + 2 * band);
-  return clamp(1 - Math.abs(across - front) / band) ** 2;
-}
-
 /**
- * The cut letters, drawn over the stone once the reef's solids are painted. At rest each is a shallow
- * groove, in shadow with a faint lower edge; lit, it glints blue-silver. Only straight strokes, so
- * the still export can hold it.
+ * The cut letters, drawn over the stone once the reef's solids are painted. Each is a shallow groove,
+ * in shadow, with a faint lower edge that catches what light there is. They never move or change.
+ * Only straight strokes, so the still export can hold it.
  */
-export function paintRelic(ctx, cam, relic, seconds = 0) {
+export function paintRelic(ctx, cam, relic) {
   if (!relic) return;
   const trace = (points, dx = 0, dy = 0) => {
     ctx.beginPath();
     points.forEach(([a, b], i) => { const p = cam.project(relic.at(a, b, .8)); if (i) ctx.lineTo(p.x + dx, p.y + dy); else ctx.moveTo(p.x + dx, p.y + dy); });
     ctx.stroke();
   };
-  const resting = blend(WATER, PALE, RESTING);
   ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   for (const cut of relic.strokes) {
-    const light = shimmer(seconds, cut.across);
-    // The groove itself, in shadow, and the edge of it that faces up to what light there is.
     ctx.strokeStyle = rgb(blend(WATER, PALE, .012)); ctx.lineWidth = cut.point ? 1.2 : 1;
     trace(cut.points);
-    ctx.strokeStyle = rgb(resting); ctx.lineWidth = cut.point ? .8 : .55;
+    ctx.strokeStyle = rgb(blend(WATER, PALE, RESTING)); ctx.lineWidth = cut.point ? .85 : .6;
     trace(cut.points, .4, .45);
-    if (light > .01) {
-      ctx.strokeStyle = rgb(blend(resting, SILVER, light * .9)); ctx.lineWidth = (cut.point ? 1 : .7) + .5 * light;
-      trace(cut.points, .2, .2);
-    }
   }
   ctx.restore();
 }
