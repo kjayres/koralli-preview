@@ -1,16 +1,23 @@
-// A maker's mark on the reef. On the limestone slab at the front of the reef stands a carved stone,
-// and on it a fragment of the Antikythera mechanism: the oldest known computing device, and one
-// that was found on a seabed. Its wheels turn very slowly. The stone is signed as Greek craftsmen
-// signed their work, with the maker's name and ΕΠΟΙΗΣΕΝ, "made this". Every seven seconds light
-// passes over the letters. Nothing about the reef itself is moved to make room for it.
+// A maker's mark on the reef, for those who look. A worn block of cut stone lies half buried in the
+// sand, fallen against the limestone slab at the front of the reef. It is the same mesh and the same
+// blue as the rock around it, so it reads as part of the seabed. A signature is cut into its face as
+// Greek craftsmen signed their work, the maker's name and ΕΠΟΙΗΣΕΝ, "made this". The letters are
+// shallow and hard to see, until every seven seconds light crosses them. Nothing else in the reef is
+// moved to make room for it.
+import { reefFloorHeight } from './reef-terrain.mjs';
+
 const TAU = Math.PI * 2;
-const WATER = [12, 22, 48], PALE = [143, 165, 255], GOLD = [238, 206, 142], BRONZE = [206, 168, 106];
+const WATER = [12, 22, 48], PALE = [143, 165, 255], SILVER = [214, 227, 255];
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));
-const mix = (a, b, t) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+const blend = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const rgb = colour => `rgb(${colour.map(Math.round).join(',')})`;
+const random = seed => { const value = Math.sin(seed * 91.73 + 17.19) * 41738.31; return value - Math.floor(value); };
 
 /** The signature, a line to each row of the stone, and how often and for how long the light crosses it. */
 export const INSCRIPTION = { wide: ['ΚΙΕΡΑΝ ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ'], compact: ['ΚΙΕΡΑΝ', 'ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ'] };
 export const SHIMMER_EVERY = 7, SHIMMER_LASTS = 1.5;
+/** How visible a cut letter is at rest, as a share of the reef's line colour: fainter than the mesh around it. */
+export const RESTING = .2;
 
 // Letters cut as plain strokes, each in a cell one unit high, set on a square grid as in a
 // stoichedon inscription. A word break is marked with two points, as early inscriptions did.
@@ -29,85 +36,91 @@ const GLYPHS = {
   'Η': { width: .7, strokes: [[[0, 0], [0, 1]], [[.7, 0], [.7, 1]], [[0, .5], [.7, .5]]] },
 };
 
-// The stone and the fragment, in units of the reef. The compact reef has a narrower slab, so its
-// stone is taller and carries the signature on three lines.
+// The block, in units of the reef: its size, how far it leans back against the slab, how it has
+// turned and settled, and how deep it lies in the sand. The compact reef has a narrower slab, so
+// its block is taller and carries the signature on three lines.
 const SHAPES = {
-  wide: { outcrop: 2, along: .73, width: 72, depth: 20, height: 22, pitch: 5.4, cap: 5.5, leading: 2.4, plate: 1 },
-  compact: { outcrop: 1, along: .5, width: 48, depth: 16, height: 28, pitch: 5.4, cap: 5.5, leading: 2.3, plate: .82 },
+  wide: { outcrop: 2, along: .66, width: 76, height: 27, thick: 13, lean: 16, turn: -4, settle: 3.2, buried: 4.5, columns: 8, pitch: 5.4, cap: 5.4, leading: 2.6 },
+  compact: { outcrop: 1, along: .5, width: 50, height: 32, thick: 11, lean: 14, turn: 3, settle: -2.6, buried: 4, columns: 5, pitch: 5.4, cap: 5.4, leading: 2.3 },
 };
-// The fragment's broken outline and its wheels, from its foot: [across, up].
-const PLATE = [[-15, 0], [-17, 9.5], [-14.5, 18.5], [-16, 26.5], [-9, 31], [0, 29.5], [6, 31.5], [13, 28], [17, 19.5], [15, 11.5], [16.5, 4.5], [9, 0]];
-const WHEELS = [
-  { at: [.5, 16], radius: 10.2, teeth: 40, spokes: 4 }, { at: [9.6, 24.1], radius: 4.3, teeth: 18, spokes: 3 },
-  { at: [-9.8, 8.1], radius: 3.6, teeth: 15, spokes: 3 }, { at: [-8.6, 24.7], radius: 5.2, teeth: 22, spokes: 3 },
-];
-// Age: a crack running in from the broken edge, and a few pits where the bronze has corroded.
-const CRACK = [[17, 19.5], [12.4, 17.6], [10.8, 14.2], [6.6, 12.1]];
-const PITS = [[-12.6, 15.4], [12.2, 6.3], [3.4, 27.2], [-4.6, 3.1], [13.1, 17.9]];
-/** Seconds for the great wheel to turn once; the others turn against it, faster as they are smaller. */
-export const WHEEL_TURNS_IN = 50;
 
-function normal(a, b, c) {
-  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-  const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], length = Math.hypot(...n) || 1;
-  return n.map(value => value / length);
-}
-// A flat outline in the plane facing the viewer, given thickness away from them.
-function slab(name, material, outline, face, depth) {
-  const count = outline.length, vertices = [], faces = [];
-  for (const y of [face, face + depth]) for (const [x, z] of outline) vertices.push([x, y, z]);
-  const centre = outline.reduce((sum, point) => [sum[0] + point[0] / count, sum[1] + point[1] / count], [0, 0]);
-  const front = vertices.push([centre[0], face, centre[1]]) - 1, back = vertices.push([centre[0], face + depth, centre[1]]) - 1;
-  for (let i = 0; i < count; i++) {
-    const next = (i + 1) % count;
-    faces.push([i, next, front], [count + next, count + i, back], [i, count + i, next], [next, count + i, count + next]);
-  }
-  return { name, material, vertices, faces, nodes: [], coral: false, motion: false, subdivide: false, anchor: null,
-    normals: faces.map(triangle => normal(...triangle.map(index => vertices[index]))) };
-}
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = a => { const length = Math.hypot(...a) || 1; return a.map(value => value / length); };
+const normal = (a, b, c) => unit(cross(b.map((v, i) => v - a[i]), c.map((v, i) => v - a[i])));
 
 /**
- * Where the stone stands and everything drawn on it. `rocks` are the reef's limestone fragments:
- * the stone is seated on the existing slab at the front, sunk a little into its uneven top.
+ * Where the block lies and everything cut into it. `rocks` are the reef's limestone fragments: the
+ * block rests in the sand in front of the front slab and leans back against it.
  */
 export function reefRelic(rocks, compact = false) {
   const shape = SHAPES[compact ? 'compact' : 'wide'], rock = rocks.find(candidate => candidate.name === `Limestone outcrop ${shape.outcrop}`);
   if (!rock) return null;
-  const [low, high] = rock.bounds, { width, depth, height } = shape;
-  const x = low[0] + (high[0] - low[0]) * shape.along, y = (low[1] + high[1]) / 2, face = y - depth / 2;
-  // The lowest part of the slab's top under the stone, so that it never floats over a dip.
-  const under = rock.vertices.filter(([vx, vy, vz]) => Math.abs(vx - x) < width / 2 && Math.abs(vy - y) < depth / 2 && vz > high[2] - (high[2] - low[2]) * .45);
-  const base = (under.length ? Math.min(...under.map(vertex => vertex[2])) : high[2] - (high[2] - low[2]) * .2) - 1.2;
-  const left = x - width / 2, right = x + width / 2, top = base + height;
-  // A squared block, a touch narrower at the top, with one corner broken away.
-  const stone = [[left, base], [right, base], [right - .9, top - 5], [right - 6, top], [left + .9, top]];
-  const scale = shape.plate, foot = top - .7, centre = x + (compact ? 0 : 3);
-  const plate = PLATE.map(([across, up]) => [centre + across * scale, foot + up * scale]);
-  const plateFace = face + depth * .42;
-  // The signature, centred on the stone: every stroke of every letter, with where it sits across the stone.
+  const [low, high] = rock.bounds, { width, height, thick, buried } = shape, degrees = Math.PI / 180;
+  const x = low[0] + (high[0] - low[0]) * shape.along;
+  // The slab's face where the block meets it: the nearest the slab comes to the viewer along the block's width.
+  const facing = rock.vertices.filter(vertex => Math.abs(vertex[0] - x) < width / 2);
+  const slabFace = facing.length ? Math.min(...facing.map(vertex => vertex[1])) : low[1];
+  // The block's own directions: along its width, up its face, and out of its face towards the viewer.
+  const lean = shape.lean * degrees, turn = shape.turn * degrees, settle = shape.settle * degrees;
+  const across = unit([Math.cos(turn), Math.sin(turn), Math.sin(settle)]);
+  const upright = [0, Math.sin(lean), Math.cos(lean)], shared = upright.reduce((sum, v, i) => sum + v * across[i], 0);
+  const rise = unit(upright.map((v, i) => v - across[i] * shared)), out = cross(across, rise);
+  // Its top back edge rests just inside the slab; its foot lies below the sand.
+  const y = slabFace + 1.5 - rise[1] * height + out[1] * thick;
+  const foot = [x, y, reefFloorHeight(x, y / 3.1, compact) - buried];
+  const at = (a, b, proud = 0) => [0, 1, 2].map(i => foot[i] + across[i] * (a - width / 2) + rise[i] * b + out[i] * proud);
+  // A worn face: a grid whose edge is chipped, most at one upper corner, and whose surface is uneven.
+  const columns = shape.columns, rows = 3, vertices = [], faces = [];
+  const worn = (i, j) => {
+    const seed = i * 17 + j * 131 + (compact ? 900 : 0), edge = i === 0 || i === columns || j === rows;
+    let a = i / columns * width, b = j / rows * height;
+    if (i === 0) a += .4 + random(seed) * 1.6;
+    if (i === columns) a -= .4 + random(seed + 3) * 1.6;
+    if (j === rows) b -= random(seed + 5) * 1.5;
+    if (i === 0 && j === rows) { a += 3.2; b -= 3.4; }
+    if (i === columns && j === rows) { a -= 1.2; b -= 1.4; }
+    return { a, b, proud: edge ? -.5 - random(seed + 7) * .5 : (random(seed + 9) - .5) * .7 };
+  };
+  const index = (i, j, back = 0) => back * (columns + 1) * (rows + 1) + j * (columns + 1) + i;
+  for (const back of [0, 1]) for (let j = 0; j <= rows; j++) for (let i = 0; i <= columns; i++) {
+    const { a, b, proud } = worn(i, j);
+    vertices.push(at(a, b, back ? -thick - (random(i * 29 + j * 7) - .5) : proud));
+  }
+  for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) {
+    const a = index(i, j), b = index(i + 1, j), c = index(i, j + 1), d = index(i + 1, j + 1);
+    // Alternate the diagonal so the face reads as broken stone and not as ruled paper.
+    if ((i + j) % 2) faces.push([a, b, c], [b, d, c]); else faces.push([a, b, d], [a, d, c]);
+  }
+  for (let i = 0; i < columns; i++) faces.push([index(i, rows), index(i + 1, rows), index(i, rows, 1)], [index(i + 1, rows), index(i + 1, rows, 1), index(i, rows, 1)]);
+  for (let j = 0; j < rows; j++) for (const i of [0, columns]) {
+    const a = index(i, j), b = index(i, j + 1), c = index(i, j, 1), d = index(i, j + 1, 1);
+    if (i) faces.push([a, c, b], [b, c, d]); else faces.push([a, b, c], [b, d, c]);
+  }
+  const mesh = { name: 'Signed stone', material: 'limestone', vertices, faces, nodes: [], coral: false, motion: false, subdivide: false, anchor: null,
+    normals: faces.map(triangle => normal(...triangle.map(id => vertices[id]))) };
+  // The signature, centred on the part of the face that stands clear of the sand.
   const lines = INSCRIPTION[compact ? 'compact' : 'wide'], { pitch, cap, leading } = shape, strokes = [];
-  const block = lines.length * cap + (lines.length - 1) * leading, first = base + (height - block) / 2 + block - cap + .3;
+  const block = lines.length * cap + (lines.length - 1) * leading, first = buried + 1.2 + (height - buried - 1.2 - block) / 2 + block - cap;
+  const baselines = lines.map((_, row) => first - row * (cap + leading));
   lines.forEach((line, row) => {
-    const start = x - line.length * pitch / 2, baseline = first - row * (cap + leading);
+    const start = width / 2 - line.length * pitch / 2, baseline = baselines[row];
     [...line].forEach((letter, column) => {
-      const cell = start + column * pitch, middle = cell + pitch / 2;
+      const middle = start + column * pitch + pitch / 2;
       if (letter === ' ') {
-        for (const up of [.3, .7]) strokes.push({ across: (middle - left) / width, points: [[middle - .28, baseline + cap * up], [middle + .28, baseline + cap * up]], point: true });
+        for (const up of [.3, .7]) strokes.push({ across: middle / width, point: true, points: [[middle - .28, baseline + cap * up], [middle + .28, baseline + cap * up]] });
         return;
       }
       const glyph = GLYPHS[letter];
       if (!glyph) throw new Error(`No inscription letter for ${letter}`);
       const origin = middle - glyph.width * cap / 2;
-      for (const stroke of glyph.strokes) strokes.push({ across: (middle - left) / width, points: stroke.map(([u, v]) => [origin + u * cap, baseline + v * cap]) });
+      for (const stroke of glyph.strokes) strokes.push({ across: middle / width, points: stroke.map(([u, v]) => [origin + u * cap, baseline + v * cap]) });
     });
   });
-  const onPlate = ([across, up]) => [centre + across * scale, foot + up * scale];
-  const wheels = WHEELS.map(wheel => ({ ...wheel, at: onPlate(wheel.at), radius: wheel.radius * scale }));
+  const extent = axis => [Math.min(...vertices.map(vertex => vertex[axis])), Math.max(...vertices.map(vertex => vertex[axis]))];
   return {
-    x, y, base, top, face, plateFace, width, depth, height, stone, plate, wheels, strokes, lines,
-    crack: CRACK.map(onPlate), pits: PITS.map(onPlate), cap, baselines: lines.map((_, row) => first - row * (cap + leading)),
-    bounds: [[Math.min(left, centre - 17 * scale), face, base], [Math.max(right, centre + 17 * scale), face + depth, foot + 31.5 * scale]],
-    meshes: [slab('Carved stone', 'stele', stone, face, depth), slab('Mechanism fragment', 'bronze', plate, plateFace, 3 * scale)],
+    x, foot, width, height, thick, buried, lean, slabFace, lines, cap, baselines, strokes, meshes: [mesh],
+    // A point on the face: across it from its left edge, up it from its foot, and proud of its surface.
+    at, bounds: [[extent(0)[0], extent(1)[0], extent(2)[0]], [extent(0)[1], extent(1)[1], extent(2)[1]]],
   };
 }
 
@@ -118,58 +131,32 @@ export function shimmer(seconds, across) {
   const front = -band + since / SHIMMER_LASTS * (1 + 2 * band);
   return clamp(1 - Math.abs(across - front) / band) ** 2;
 }
-/** The angle of each wheel at a time: neighbours turn against the great wheel, in proportion. */
-export function wheelAngles(relic, seconds) {
-  const great = TAU * seconds / WHEEL_TURNS_IN;
-  return relic.wheels.map((wheel, index) => index ? -great * relic.wheels[0].radius / wheel.radius : great);
-}
 
 /**
- * The fine work, drawn over the reef once its solids are painted: the stone's edges, the fragment
- * and its turning wheels, and the cut letters. Only straight strokes, so the still export can hold it.
+ * The cut letters, drawn over the stone once the reef's solids are painted. At rest each is a shallow
+ * groove, in shadow with a faint lower edge; lit, it glints blue-silver. Only straight strokes, so
+ * the still export can hold it.
  */
 export function paintRelic(ctx, cam, relic, seconds = 0) {
   if (!relic) return;
-  const stroke = (points, colour, alpha, width, y, closed = false) => {
-    ctx.strokeStyle = mix(WATER, colour, alpha); ctx.lineWidth = width;
+  const trace = (points, dx = 0, dy = 0) => {
     ctx.beginPath();
-    points.forEach(([x, z], i) => { const p = cam.project([x, y, z]); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
-    if (closed) ctx.closePath();
+    points.forEach(([a, b], i) => { const p = cam.project(relic.at(a, b, .8)); if (i) ctx.lineTo(p.x + dx, p.y + dy); else ctx.moveTo(p.x + dx, p.y + dy); });
     ctx.stroke();
   };
+  const resting = blend(WATER, PALE, RESTING);
   ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  // The stone: its face, and the edge of the side that turns towards the viewer.
-  const { stone, face, depth } = relic, near = relic.x > 0 ? 0 : 1, corner = stone[near], upper = relic.x > 0 ? stone[4] : stone[2];
-  stroke(stone, PALE, .62, .85, face, true);
-  ctx.strokeStyle = mix(WATER, PALE, .4); ctx.lineWidth = .7; ctx.beginPath();
-  for (const [x, z] of [corner, upper]) { const a = cam.project([x, face, z]), b = cam.project([x, face + depth, z]); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
-  ctx.stroke();
-  // The fragment, a crack across it, and its wheels.
-  const front = relic.plateFace - .2;
-  stroke(relic.plate, BRONZE, .78, .9, front, true);
-  stroke(relic.crack, BRONZE, .5, .6, front);
-  ctx.fillStyle = mix(WATER, BRONZE, .42);
-  for (const [x, z] of relic.pits) { const pit = cam.project([x, front, z]); ctx.beginPath(); ctx.arc(pit.x, pit.y, .75, 0, TAU); ctx.fill(); }
-  const angles = wheelAngles(relic, seconds);
-  relic.wheels.forEach((wheel, index) => {
-    const [cx, cz] = wheel.at, r = wheel.radius, turn = angles[index], tooth = Math.max(.7, r * .11);
-    const sides = Math.max(18, wheel.teeth);
-    const rim = Array.from({ length: sides }, (_, i) => [cx + Math.cos(i * TAU / sides) * r, cz + Math.sin(i * TAU / sides) * r]);
-    stroke(rim, BRONZE, .8, .7, front, true);
-    stroke(rim.map(([x, z]) => [cx + (x - cx) * .2, cz + (z - cz) * .2]), BRONZE, .7, .6, front, true);
-    ctx.strokeStyle = mix(WATER, BRONZE, .7); ctx.lineWidth = .55; ctx.beginPath();
-    const spoke = (angle, from, to) => {
-      const a = cam.project([cx + Math.cos(angle) * from, front, cz + Math.sin(angle) * from]), b = cam.project([cx + Math.cos(angle) * to, front, cz + Math.sin(angle) * to]);
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    };
-    for (let i = 0; i < wheel.teeth; i++) spoke(turn + i * TAU / wheel.teeth, r, r + tooth);
-    for (let i = 0; i < wheel.spokes; i++) spoke(turn + i * TAU / wheel.spokes, r * .2, r);
-    ctx.stroke();
-  });
-  // The signature. Cut letters sit a little dim until the light crosses them.
   for (const cut of relic.strokes) {
     const light = shimmer(seconds, cut.across);
-    stroke(cut.points, GOLD, .5 + .5 * light, (cut.point ? 1 : .8) + .45 * light, face - .15);
+    // The groove itself, in shadow, and the edge of it that faces up to what light there is.
+    ctx.strokeStyle = rgb(blend(WATER, PALE, .012)); ctx.lineWidth = cut.point ? 1.2 : 1;
+    trace(cut.points);
+    ctx.strokeStyle = rgb(resting); ctx.lineWidth = cut.point ? .8 : .55;
+    trace(cut.points, .4, .45);
+    if (light > .01) {
+      ctx.strokeStyle = rgb(blend(resting, SILVER, light * .9)); ctx.lineWidth = (cut.point ? 1 : .7) + .5 * light;
+      trace(cut.points, .2, .2);
+    }
   }
   ctx.restore();
 }

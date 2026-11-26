@@ -12,7 +12,6 @@ const WATER = [12, 22, 48];
 const PALE = [143, 165, 255];
 const CORAL = [255, 102, 85];
 const FISH_GREY = [195, 195, 195];
-const BRONZE = [206, 168, 106];
 const TIP_START=.08;
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -228,7 +227,7 @@ function camera(width, height, time, compact) {
 
 const STYLES = new Map();
 function style(material, faceNormal, depth, distance) {
-  const colour = material === 'fish' ? FISH_GREY : material === 'coral' ? CORAL : material === 'bronze' ? BRONZE : PALE;
+  const colour = material === 'fish' ? FISH_GREY : material === 'coral' ? CORAL : PALE;
   const lightStep = Math.round(Math.abs(dot(faceNormal, [-0.303, -0.505, 0.808])) * 32);
   const light = lightStep / 32;
   const fogKey = Math.round(clamp(1 - Math.max(0, depth - distance + 85) / 1250, 0.52, 1) * 64);
@@ -242,10 +241,6 @@ function style(material, faceNormal, depth, distance) {
   else if (material === 'rock') { fill = 0.012 + (1 - light) * 0.025; edge = 0.27; width = 0.37; }
   else if (material === 'limestone') { fill = 0.012 + light * 0.058; edge = .30 + light * .12; width = .28; }
   else if (material === 'fish') { fill = 0.012 + (1 - light) * 0.016; edge = 0.55; width = 0.28; }
-  // The carved stone and the bronze fragment are plain solids: their mesh is drawn in their own
-  // tone, and their edges, wheels and letters are drawn over them as fine work.
-  else if (material === 'stele') { fill = edge = 0.085 + light * 0.075; width = 0.3; }
-  else if (material === 'bronze') { fill = edge = 0.10 + light * 0.09; width = 0.3; }
   else { fill = 0.016 + (1 - light) * 0.028; edge = material === 'coral' ? 0.64 : 0.61; width = 0.20; }
   // Opaque blends hide the rear surface while retaining very light shading.
   const stroke = material === 'fish' ? `rgb(${Array(3).fill(Math.round(183 * fog * 0.78)).join(',')})` : mix(WATER, colour, edge * fog);
@@ -288,7 +283,7 @@ export class Reef {
       scene.push(groundScene(null,[prepare(layout[i],i)],s.reefCompact)[1]);
       yield;
     }
-    // The maker's mark stands on the front slab. It travels with the scene it belongs to.
+    // The signed stone lies against the front slab. It travels with the scene it belongs to.
     scene.relic=reefRelic(rocks,s.reefCompact);
     if(scene.relic)scene.push(...scene.relic.meshes);
     s.reefScene = scene;

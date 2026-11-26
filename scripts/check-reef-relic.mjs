@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reefHabitat } from '../src/scripts/art/reef-habitat.mjs';
-import { reefRockFragments } from '../src/scripts/art/reef-terrain.mjs';
-import { reefRelic, paintRelic, shimmer, wheelAngles, INSCRIPTION, SHIMMER_EVERY, SHIMMER_LASTS, WHEEL_TURNS_IN } from '../src/scripts/art/reef-relic.mjs';
+import { reefRockFragments, reefFloorHeight } from '../src/scripts/art/reef-terrain.mjs';
+import { reefRelic, paintRelic, shimmer, INSCRIPTION, SHIMMER_EVERY, SHIMMER_LASTS, RESTING } from '../src/scripts/art/reef-relic.mjs';
 import { Reef, movingFish } from '../src/scripts/art/reef.mjs';
 import { movingTurtle } from '../src/scripts/art/reef-turtle.mjs';
 
@@ -11,34 +11,44 @@ const layouts = [false, true].map(compact => {
   return { compact, rocks, relic: reefRelic(rocks, compact) };
 });
 
-test('the carved stone is seated on the front limestone slab, in both layouts', () => {
+test('the signed stone lies in the sand against the front slab, as part of the seabed', () => {
   for (const { compact, rocks, relic } of layouts) {
     const slab = rocks.find(rock => rock.name === `Limestone outcrop ${compact ? 1 : 2}`), [low, high] = slab.bounds;
     assert.ok(relic, 'The reef has its maker\'s mark');
-    assert.ok(relic.bounds[0][0] > low[0] && relic.bounds[1][0] < high[0], 'The stone stands within the slab from side to side');
-    assert.ok(relic.face > low[1] && relic.face + relic.depth < high[1], 'and from front to back');
-    assert.ok(relic.base < high[2] && relic.base > high[2] - (high[2] - low[2]) * .6, 'Its foot is sunk into the slab\'s top, not floating over it');
-    for (const mesh of relic.meshes) {
-      assert.ok(mesh.vertices.flat().every(Number.isFinite) && mesh.faces.length > 8);
-      assert.ok(mesh.normals.every(n => Math.abs(Math.hypot(...n) - 1) < 1e-9));
-      assert.equal(mesh.coral, false); assert.equal(mesh.motion, false);
-    }
-    assert.deepEqual(relic.meshes.map(mesh => mesh.material), ['stele', 'bronze']);
+    assert.ok(relic.bounds[0][0] > low[0] && relic.bounds[1][0] < high[0], 'The stone lies within the width of the slab behind it');
+    assert.ok(relic.bounds[0][1] < low[1], 'It lies in front of the slab');
+    assert.ok(Math.abs(relic.bounds[1][1] - relic.slabFace) < 4, 'and leans back until it touches it');
+    const floor = reefFloorHeight(relic.foot[0], relic.foot[1] / 3.1, compact);
+    assert.ok(floor - relic.foot[2] >= 3.5, 'Its foot is under the sand, so it cannot look as if it floats');
+    assert.ok(relic.bounds[1][2] < high[2] + 6, 'It stands no taller than the rock it rests on');
+    assert.ok(relic.lean > .15 && relic.lean < .45, 'It leans; it is not set upright like a sign');
+    assert.equal(relic.meshes.length, 1);
+    const [mesh] = relic.meshes;
+    assert.equal(mesh.material, 'limestone', 'The same stone, mesh and colour as the rocks around it');
+    assert.ok(mesh.vertices.flat().every(Number.isFinite) && mesh.faces.length >= 40, 'A meshed solid, not a flat plate');
+    assert.ok(mesh.normals.every(n => Math.abs(Math.hypot(...n) - 1) < 1e-9));
+    // A worn face is uneven: its triangles do not all share one plane.
+    const facing = mesh.normals.filter(n => n[1] < -.5).map(n => n.map(value => value.toFixed(2)).join());
+    assert.ok(new Set(facing).size > 8);
+    assert.equal(mesh.coral, false); assert.equal(mesh.motion, false);
   }
 });
 
-test('the signature reads as carved, letter by letter, inside the face of the stone', () => {
+test('the signature is cut letter by letter into the part of the face above the sand, and is faint at rest', () => {
   assert.deepEqual(INSCRIPTION.wide, ['ΚΙΕΡΑΝ ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ']);
   assert.equal(INSCRIPTION.compact.join(' '), INSCRIPTION.wide.join(' '), 'The narrow reef carries the same words on more lines');
+  assert.ok(RESTING > .08 && RESTING <= .25, 'At rest the letters are fainter than the reef\'s own lines');
   for (const { relic } of layouts) {
-    const left = relic.x - relic.width / 2, right = relic.x + relic.width / 2;
-    assert.ok(relic.strokes.length > 25, "Every letter is cut");
+    assert.ok(relic.strokes.length > 25, 'Every letter is cut');
     for (const cut of relic.strokes) {
       assert.ok(cut.across > 0 && cut.across < 1);
-      for (const [x, z] of cut.points) {
-        assert.ok(x > left + 1.5 && x < right - 1.5, 'Letters keep a margin from the edges of the stone');
-        assert.ok(z > relic.base + 1.5 && z < relic.top - 1.5);
+      for (const [a, b] of cut.points) {
+        assert.ok(a > 2.5 && a < relic.width - 2.5, 'Letters keep a margin from the worn edges');
+        assert.ok(b > relic.buried + 1 && b < relic.height - 2.5, 'and from the sand and the top');
       }
+      // Each stroke lies on the face: the point given for it is the same distance proud of the block.
+      const [p, q] = [relic.at(...cut.points[0], 0), relic.at(...cut.points[0], 1)];
+      assert.ok(Math.abs(Math.hypot(...p.map((v, i) => v - q[i])) - 1) < 1e-9);
     }
     // Every stroke lies within one row of letters, and the rows do not touch.
     assert.equal(relic.baselines.length, relic.lines.length);
@@ -68,25 +78,6 @@ test('light crosses the letters every seven seconds, left to right, and leaves t
   }
 });
 
-test('the wheels turn slowly against one another and stay on the fragment', () => {
-  for (const { relic } of layouts) {
-    const xs = relic.plate.map(point => point[0]), zs = relic.plate.map(point => point[1]);
-    for (const wheel of relic.wheels) {
-      assert.ok(wheel.at[0] - wheel.radius > Math.min(...xs) - 1.5 && wheel.at[0] + wheel.radius < Math.max(...xs) + 1.5);
-      assert.ok(wheel.at[1] - wheel.radius > Math.min(...zs) - 1.5 && wheel.at[1] + wheel.radius < Math.max(...zs) + 1.5);
-    }
-    assert.ok(Math.min(...zs) < relic.top && Math.min(...zs) > relic.top - 2, 'The fragment stands on the stone');
-    const start = wheelAngles(relic, 0), later = wheelAngles(relic, WHEEL_TURNS_IN);
-    assert.ok(start.every(angle => angle === 0));
-    assert.ok(Math.abs(later[0] - Math.PI * 2) < 1e-9, 'The great wheel turns once in its period');
-    later.slice(1).forEach((angle, i) => {
-      assert.ok(angle < 0, 'Neighbours turn the other way');
-      assert.ok(Math.abs(angle * relic.wheels[i + 1].radius + later[0] * relic.wheels[0].radius) < 1e-9, 'in proportion to their size');
-    });
-    assert.ok(WHEEL_TURNS_IN >= 30, 'Slow enough to be a detail, not a distraction');
-  }
-});
-
 test('no fish or turtle swims through it', () => {
   const span = mesh => [0, 1, 2].map(axis => [Math.min(...mesh.vertices.map(v => v[axis])), Math.max(...mesh.vertices.map(v => v[axis]))]);
   for (const { compact, relic } of layouts) {
@@ -108,16 +99,23 @@ test('the fine work is drawn with plain strokes the still export can hold, and t
     save() {}, restore() {}, beginPath() {}, closePath() {},
     moveTo(x, y) { assert.ok(Number.isFinite(x) && Number.isFinite(y)); calls.move++; },
     lineTo(x, y) { assert.ok(Number.isFinite(x) && Number.isFinite(y)); calls.line++; },
-    arc(x, y, r, from, to) { assert.ok(Math.abs(to - from - Math.PI * 2) < 1e-9, 'Only whole circles'); calls.arcs++; },
+    arc() { calls.arcs++; },
     stroke() { calls.strokes.push(this.strokeStyle); }, fill() { calls.fills.push(this.fillStyle); },
   };
   const cam = { project: ([x, y, z]) => ({ x: x + 700, y: 400 - z + y * .01, z: 2800 + y }) };
   paintRelic(ctx, cam, layouts[0].relic, 0);
-  assert.ok(calls.line > 300 && calls.arcs === layouts[0].relic.pits.length);
-  const resting = calls.strokes.at(-1);
+  assert.ok(calls.line > 100 && calls.arcs === 0, 'Straight strokes only');
+  const resting = new Set(calls.strokes);
+  assert.equal(resting.size, 2, 'At rest: a groove in shadow and its faint lower edge, nothing else');
+  const brightness = style => style.match(/\d+/g).map(Number).reduce((sum, value) => sum + value, 0);
+  // The slab's own mesh lines are drawn at three tenths or more of the reef's pale blue: rgb(51,65,110).
+  assert.ok(Math.max(...[...resting].map(brightness)) < 51 + 65 + 110, 'Resting letters are dimmer than the rock\'s own lines');
   calls.strokes.length = 0;
   paintRelic(ctx, cam, layouts[0].relic, SHIMMER_LASTS * .5);
-  assert.ok(calls.strokes.some(style => style !== resting && /^rgb\(\d+,\d+,\d+\)$/.test(style)), 'Lit letters are drawn brighter than resting ones');
+  const lit = calls.strokes.filter(style => !resting.has(style));
+  assert.ok(lit.length > 3 && lit.every(style => /^rgb\(\d+,\d+,\d+\)$/.test(style)));
+  const [r, g, b] = lit.sort((a, c) => brightness(c) - brightness(a))[0].match(/\d+/g).map(Number);
+  assert.ok(brightness(`${r},${g},${b}`) > 500 && b >= r && b >= g, 'The glint is blue-silver');
   paintRelic(ctx, cam, null, 0);
   // The scene itself carries the stone, so resizing and re-warming keep it.
   const state = { ctx: { canvas: {} }, w: 390, h: 440 };
