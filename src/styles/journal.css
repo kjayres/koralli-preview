@@ -15,12 +15,14 @@
 .journal-page main { position:relative; isolation:isolate; overflow:hidden; overflow:clip; background:linear-gradient(150deg,#142a49 0%,#10203e 38%,#0c1630 85%); }
 .journal-ocean { position:absolute; inset:0; z-index:-1; pointer-events:none; }
 .journal-ocean canvas { display:block; width:100%; height:100%; }
-.journal-hero { max-width:1420px; margin:auto; padding:210px var(--gutter) 100px; }
+/* The opening fills the first screen with its copy at the foot, as on the other pages, and its
+   title is set in the same size, weight and spacing as theirs. The essays begin below it. */
+.journal-hero { display:flex; flex-direction:column; justify-content:flex-end; max-width:1420px; min-height:max(100svh,640px); margin:auto; padding:170px var(--gutter) 72px; }
 .journal-hero>.eyebrow { color:var(--water-muted); }
-.journal-opening { display:block; margin-top:68px; }
-.journal-opening h1 { position:relative; width:max-content; max-width:100%; white-space:nowrap; font-size:clamp(26px,9.2vw,132px); font-weight:400; line-height:1.04; letter-spacing:-.053em; }
-.journal-opening .lead { margin-top:40px; max-width:430px; color:var(--water-muted); font-size:clamp(18px,1.6vw,22px); line-height:1.5; padding:0; }
-.journal-waterline { display:flex; justify-content:space-between; align-items:end; gap:30px; margin-top:56px; }
+.journal-opening { display:block; margin-top:0; }
+.journal-opening h1 { position:relative; max-width:100%; margin:0 0 36px; text-wrap:balance; }
+.journal-opening .lead { margin-top:0; max-width:31ch; color:var(--water-muted); font-size:clamp(19px,1.5vw,22px); line-height:1.42; padding:0; text-wrap:pretty; }
+.journal-waterline { display:flex; justify-content:space-between; align-items:end; gap:30px; margin-top:34px; }
 .journal-waterline .text-link { color:var(--water-ink); font-size:10px; }
 .journal-waterline .text-link:hover { color:var(--water-accent); }
 .journal-field-note { max-width:230px; text-align:right; font-size:10px; line-height:1.8; letter-spacing:.12em; color:#9baecb; }
@@ -54,10 +56,10 @@
 @media(min-width:1600px) { .journal-articles { padding-left:140px; padding-right:140px; } }
 @media(max-width:699px) { .reef-crab { left:22px; } }
 @media(max-width:759px) {
-  .journal-hero { padding:210px var(--gutter) 66px; }
-  .journal-opening { margin-top:53px; }
-  .journal-opening .lead { margin-top:30px; max-width:290px; font-size:18px; }
-  .journal-waterline { margin-top:40px; display:block; }
+  .journal-hero { min-height:100svh; padding:150px var(--gutter) 56px; }
+  .journal-opening h1 { margin-bottom:26px; font-size:clamp(38px,9.5vw,48px); }
+  .journal-opening .lead { max-width:31ch; font-size:19px; }
+  .journal-waterline { margin-top:30px; display:block; }
   .journal-field-note { display:none; }
   .journal-articles { padding:30px 32px 105px; }
   .journal-articles .article-row { padding:29px 0 34px; }
