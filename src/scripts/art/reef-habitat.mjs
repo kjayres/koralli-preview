@@ -1,4 +1,4 @@
-import { ORGANIC_CORALS } from './reef-organic.mjs';
+import { ORGANIC_CORALS, buildCorals } from './reef-organic.mjs';
 import { reefFloorHeight } from './reef-terrain.mjs';
 export { reefFloorHeight } from './reef-terrain.mjs';
 
@@ -37,6 +37,7 @@ function clearsSwimmingCorridors(x,y,envelope,height,compact) {
 
 /** Seeded clusters are packed by their actual mesh envelopes, not a row/grid. */
 export function reefHabitat(compact = false) {
+  buildCorals();
   const colonies = [], distance = compact ? 1500 : 2800;
   const depthScale = compact ? .52 : 1, halfWidth = compact ? 337 : 1120;
   const groups = [

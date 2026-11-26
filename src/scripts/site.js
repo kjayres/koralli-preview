@@ -70,6 +70,8 @@ async function prepareArtwork(state) {
   try {
     state.art = await artworkLoaders[state.kind]();
     if (state.kind === 'reef') {
+      // The corals are built a little at a time; the reef would otherwise build them all in its first step.
+      await state.art.prepareReefCorals?.();
       state.reef = new state.art.Reef();
     }
     if (state.kind === 'journal-water' && document.querySelector('[data-journal-frond], [data-journal-coral]')) {
@@ -528,11 +530,11 @@ document.querySelectorAll('.site-header nav a').forEach(link => {
 });
 if (tracksScroll) onScroll();
 
-// Loading the reef's code builds its coral meshes, a piece at a time. It is started in the quiet
-// moment after the page has finished loading, so the reef is ready long before it is scrolled to.
+// The reef's code is loaded, and its coral meshes built a few at a time, in the quiet moment after the
+// page has finished loading, so the reef is ready long before it is scrolled to.
 if (document.querySelector('canvas[data-art="reef"]')) {
   addEventListener('load', () => {
-    const preload = () => artworkLoaders.reef().catch(() => {});
+    const preload = () => artworkLoaders.reef().then(art => art.prepareReefCorals?.()).catch(() => {});
     if ('requestIdleCallback' in window) requestIdleCallback(preload, { timeout: 2500 });
     else setTimeout(preload, 1200);
   }, { once: true });

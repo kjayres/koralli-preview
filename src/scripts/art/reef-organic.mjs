@@ -642,10 +642,12 @@ function seaweedRibbons(seed) {
   return finish(m);
 }
 
-// The corals are built one after another, in this order. In a page the browser is given a turn
-// whenever a few milliseconds have gone by, so loading this module never holds the page for longer
-// than a single coral takes: all of them at once take long enough to make a running animation
-// stutter. Anywhere else (the tests, the export of the still) they are simply built in order.
+// The corals are built one after another, in this order. All of them at once take long enough (about
+// 55 ms on a fast machine, several times that on a slow one) to make a running animation stutter, so
+// a page builds them a few milliseconds at a time with `buildCoralsGently`, giving the browser a turn
+// in between. `buildCorals` finishes whatever is left at once: it is what runs outside a page (the
+// tests, the export of the still), and the reef calls it before it reads a coral, so nothing depends
+// on the gentle build having been asked for or having finished.
 const RECIPES = {
   staghorn: () => staghorn(11),
   staghorn_spreading: () => staghorn(29),
@@ -677,14 +679,26 @@ const RECIPES = {
   seaweed_ribbons: () => seaweedRibbons(59),
   seaweed_ribbons_open: () => seaweedRibbons(131),
 };
-const turn = typeof document === 'undefined' || typeof MessageChannel !== 'function' ? null : () => new Promise(resolve => {
-  const { port1, port2 } = new MessageChannel();
-  port1.onmessage = () => { port1.close(); resolve(); };
-  port2.postMessage(null);
-});
 export const ORGANIC_CORALS = {};
-let since = turn ? performance.now() : 0;
-for (const [kind, build] of Object.entries(RECIPES)) {
-  ORGANIC_CORALS[kind] = build();
-  if (turn && performance.now() - since > 4) { await turn(); since = performance.now(); }
+const pending = Object.entries(RECIPES);
+const buildNext = () => { const [kind, build] = pending.shift(); ORGANIC_CORALS[kind] = build(); };
+
+/** Builds every coral not yet built, at once. Does nothing when they all are. */
+export function buildCorals() { while (pending.length) buildNext(); }
+
+let gently;
+/** Builds the corals a few milliseconds at a time, giving the page a turn between. Resolves when all are built. */
+export function buildCoralsGently() {
+  return gently ||= (async () => {
+    const turn = typeof MessageChannel === 'function'
+      ? () => new Promise(resolve => { const { port1, port2 } = new MessageChannel(); port1.onmessage = () => { port1.close(); resolve(); }; port2.postMessage(null); })
+      : () => new Promise(resolve => setTimeout(resolve, 0));
+    let since = performance.now();
+    while (pending.length) {
+      buildNext();
+      if (pending.length && performance.now() - since > 4) { await turn(); since = performance.now(); }
+    }
+  })();
 }
+
+if (typeof document === 'undefined') buildCorals();

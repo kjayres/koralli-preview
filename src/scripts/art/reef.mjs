@@ -1,4 +1,4 @@
-import { ORGANIC_CORALS } from './reef-organic.mjs';
+import { ORGANIC_CORALS, buildCorals, buildCoralsGently } from './reef-organic.mjs';
 import { reefHabitat, reefFloorHeight as floorHeight } from './reef-habitat.mjs';
 import { reefTerrain, reefRockFragments } from './reef-terrain.mjs';
 import { reefCurrent, reefPlankton } from './reef-current.mjs';
@@ -261,6 +261,9 @@ function rootedOffscreen(object, cam, width) {
   return x < 40 || x > width - 40;
 }
 
+/** A page asks for this once the reef's code has loaded, so the corals are built without holding the page up. */
+export const prepareReefCorals = buildCoralsGently;
+
 export class Reef {
   props = { fish: true, turtles: true };
 
@@ -271,6 +274,7 @@ export class Reef {
 
   *seedReefSteps(s) {
     if (!(s.w > 0 && s.h > 0)) return;
+    buildCorals();
     s.reefCompact = s.w < 600;
     const layout=reefHabitat(s.reefCompact);
     yield;
