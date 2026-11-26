@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reefHabitat } from '../src/scripts/art/reef-habitat.mjs';
 import { reefRockFragments, reefFloorHeight } from '../src/scripts/art/reef-terrain.mjs';
-import { reefRelic, paintRelic, shimmer, INSCRIPTION, SHIMMER_EVERY, SHIMMER_LASTS, RESTING } from '../src/scripts/art/reef-relic.mjs';
+import * as relicModule from '../src/scripts/art/reef-relic.mjs';
+import { reefRelic, paintRelic, INSCRIPTION, RESTING } from '../src/scripts/art/reef-relic.mjs';
 import { Reef, movingFish } from '../src/scripts/art/reef.mjs';
 import { movingTurtle } from '../src/scripts/art/reef-turtle.mjs';
 
@@ -34,10 +35,10 @@ test('the signed stone lies in the sand against the front slab, as part of the s
   }
 });
 
-test('the signature is cut letter by letter into the part of the face above the sand, and is faint at rest', () => {
+test('the signature is cut letter by letter into the part of the face above the sand, and is faint', () => {
   assert.deepEqual(INSCRIPTION.wide, ['ΚΙΕΡΑΝ ΑΥΡΕΣ', 'ΕΠΟΙΗΣΕΝ']);
   assert.equal(INSCRIPTION.compact.join(' '), INSCRIPTION.wide.join(' '), 'The narrow reef carries the same words on more lines');
-  assert.ok(RESTING > .08 && RESTING <= .25, 'At rest the letters are fainter than the reef\'s own lines');
+  assert.ok(RESTING >= .25 && RESTING <= .42, 'Faintly readable: about as strong as the rock\'s own mesh, never brighter');
   for (const { relic } of layouts) {
     assert.ok(relic.strokes.length > 25, 'Every letter is cut');
     for (const cut of relic.strokes) {
@@ -60,22 +61,18 @@ test('the signature is cut letter by letter into the part of the face above the 
   }
 });
 
-test('light crosses the letters every seven seconds, left to right, and leaves the still frame clean', () => {
-  assert.equal(SHIMMER_EVERY, 7);
-  assert.ok(SHIMMER_LASTS > .8 && SHIMMER_LASTS < 2.5, 'A glint, not a glow');
-  for (const across of [.05, .3, .5, .7, .95]) {
-    assert.equal(shimmer(0, across), 0, 'Nothing is lit at the moment the still is taken');
-    let brightest = 0, at = 0;
-    for (let i = 0; i <= 700; i++) {
-      const time = i / 100, light = shimmer(time, across);
-      assert.ok(light >= 0 && light <= 1);
-      assert.ok(Math.abs(light - shimmer(time + SHIMMER_EVERY, across)) < 1e-9, 'The pass repeats exactly');
-      if (time >= SHIMMER_LASTS) assert.equal(light, 0, 'Between passes the letters rest');
-      if (light > brightest) { brightest = light; at = time; }
-    }
-    assert.ok(brightest > .95, 'Every letter is fully lit once in each pass');
-    assert.ok(Math.abs(at / SHIMMER_LASTS - (across + .22) / 1.44) < .03, 'Letters further along are lit later');
-  }
+test('the letters are still: nothing about them shimmers, moves or changes with time', () => {
+  assert.equal(relicModule.shimmer, undefined);
+  assert.equal(paintRelic.length, 3, 'The painter takes no time');
+  const cam = { project: ([x, y, z]) => ({ x: x + 700, y: 400 - z + y * .01, z: 2800 + y }) };
+  const drawn = () => {
+    const record = [];
+    const ctx = { save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo(x, y) { record.push(['M', x, y]); }, lineTo(x, y) { record.push(['L', x, y]); },
+      stroke() { record.push(['S', this.strokeStyle, this.lineWidth]); } };
+    paintRelic(ctx, cam, layouts[0].relic, record.length);
+    return JSON.stringify(record);
+  };
+  assert.equal(drawn(), drawn());
 });
 
 test('no fish or turtle swims through it', () => {
@@ -105,17 +102,11 @@ test('the fine work is drawn with plain strokes the still export can hold, and t
   const cam = { project: ([x, y, z]) => ({ x: x + 700, y: 400 - z + y * .01, z: 2800 + y }) };
   paintRelic(ctx, cam, layouts[0].relic, 0);
   assert.ok(calls.line > 100 && calls.arcs === 0, 'Straight strokes only');
-  const resting = new Set(calls.strokes);
-  assert.equal(resting.size, 2, 'At rest: a groove in shadow and its faint lower edge, nothing else');
+  const styles = new Set(calls.strokes);
+  assert.equal(styles.size, 2, 'A groove in shadow and its faint lower edge, nothing else');
   const brightness = style => style.match(/\d+/g).map(Number).reduce((sum, value) => sum + value, 0);
-  // The slab's own mesh lines are drawn at three tenths or more of the reef's pale blue: rgb(51,65,110).
-  assert.ok(Math.max(...[...resting].map(brightness)) < 51 + 65 + 110, 'Resting letters are dimmer than the rock\'s own lines');
-  calls.strokes.length = 0;
-  paintRelic(ctx, cam, layouts[0].relic, SHIMMER_LASTS * .5);
-  const lit = calls.strokes.filter(style => !resting.has(style));
-  assert.ok(lit.length > 3 && lit.every(style => /^rgb\(\d+,\d+,\d+\)$/.test(style)));
-  const [r, g, b] = lit.sort((a, c) => brightness(c) - brightness(a))[0].match(/\d+/g).map(Number);
-  assert.ok(brightness(`${r},${g},${b}`) > 500 && b >= r && b >= g, 'The glint is blue-silver');
+  // The slab's own mesh lines are drawn at up to four tenths of the reef's pale blue: rgb(64,79,131).
+  assert.ok(Math.max(...[...styles].map(brightness)) <= 64 + 79 + 131, 'The letters are no brighter than the rock\'s own lines');
   paintRelic(ctx, cam, null, 0);
   // The scene itself carries the stone, so resizing and re-warming keep it.
   const state = { ctx: { canvas: {} }, w: 390, h: 440 };
