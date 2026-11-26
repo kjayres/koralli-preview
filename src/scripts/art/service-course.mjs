@@ -12,6 +12,9 @@ const contacts = [[44, 44], [54, 44], [54, 64], [74, 64], [74, 84], [94, 84], [9
 const footY = side => Y - side * 2.4 * SCALE;
 const feetAt = (x, z) => [-1, 1].map(side => [x, footY(side), z]);
 const restHand = (pose, side) => [pose.x + 8, Y - side * 6 * SCALE, pose.z + 23];
+// Walking, the arms hang by the sides and swing against the legs: the near arm goes back as the
+// near leg comes forward, and each hand lifts a little at the end of its swing.
+const hangHand = (pose, side) => [pose.x + .6 + side * pose.stride * 4.5, Y - side * 7.2 * SCALE, pose.z + (12.6 + Math.abs(pose.stride) * 1.2) * SCALE];
 const handAt = (x, side, z = BAR) => [x, Y - side * 6 * SCALE, z];
 // Forward reach, height and lateral spread, relative to the body. The crouch
 // draws the arms back before both swing upwards to help the take-off.
@@ -27,22 +30,49 @@ function swingArms(pose, progress, keys) {
   [pose.left, pose.right] = [-1, 1].map(side => [pose.x + forward, Y - side * spread * SCALE, pose.z + height]);
 }
 
+// The first rung is out of standing reach. The robot stops, crouches as its arms swing back, springs,
+// and catches the bar at the top of the jump. It swings once beneath the rung and settles to a hang.
+export const JUMP = { from: 41, floor: 8, crouch: .14, spring: .40, catch: .64, hang: [42, 26] };
+function jumpToBar(pose, u) {
+  const rise = clamp((u - JUMP.spring) / (JUMP.catch - JUMP.spring)), hang = clamp((u - JUMP.catch) / (1 - JUMP.catch));
+  const settle = 1 - smooth((hang - .7) / .3);
+  pose.stage = 'reach';
+  if (u < JUMP.spring) {
+    pose.x = JUMP.from;
+    pose.z = JUMP.floor - 3.6 * smooth((u - JUMP.crouch) / (JUMP.spring - JUMP.crouch));
+  } else if (u < JUMP.catch) {
+    pose.x = JUMP.from + smooth(rise);
+    pose.z = JUMP.floor - 3.6 + (JUMP.hang[1] + 1.2 - JUMP.floor + 3.6) * Math.sin(rise * Math.PI / 2);
+  } else {
+    pose.x = JUMP.hang[0] + 2.2 * Math.exp(-2.5 * hang) * Math.sin(hang * TAU * 1.25) * settle;
+    pose.z = JUMP.hang[1] + 1.2 * Math.exp(-3 * hang) * Math.cos(hang * TAU * 1.2) * settle;
+  }
+  // Feet stay on the platform until the legs are straight, then trail beneath and tuck into the hang.
+  const air = smooth((u - .43) / .47), straight = pose.z - .85;
+  const footX = mix(JUMP.from, pose.x - 2, air) - .9 * (pose.x - JUMP.hang[0]) * (u < JUMP.catch ? 0 : 1);
+  pose.feet = feetAt(footX, Math.max(JUMP.floor, mix(straight, pose.z + 2, air)));
+  [pose.left, pose.right] = [-1, 1].map(side => {
+    const hung = hangHand(pose, side), back = [pose.x - 5.5, Y - side * 7.4 * SCALE, pose.z + 17];
+    const low = [pose.x + 7, Y - side * 6.2 * SCALE, pose.z + 24], rung = handAt(44, side);
+    if (u < JUMP.spring) return mix3(hung, back, smooth((u - .1) / .24));
+    if (u < .5) return mix3(back, low, smooth((u - JUMP.spring) / (.5 - JUMP.spring)));
+    return u < JUMP.catch ? mix3(low, rung, smooth((u - .5) / (JUMP.catch - .5))) : rung;
+  });
+  pose.grips = [u >= JUMP.catch, u >= JUMP.catch];
+}
+
 export function coursePose(phase) {
   const t = ((phase % 1) + 1) % 1;
   const pose = { x: 30, y: Y, z: 8, scale: SCALE, heading: Math.PI / 2, stride: 0, opacity: 1, stage: 'start', grips: [false, false], feet: feetAt(30, 8) };
   if (t < .1) {
     const u = t / .1;
-    pose.x = mix(30, 41, smooth(u));
+    pose.x = mix(30, JUMP.from, smooth(u));
     pose.stride = Math.sin(pose.x * TAU / 7) * Math.sin(u * Math.PI);
     pose.feet = null;
     pose.opacity = smooth((t - .01) / .03);
+    pose.left = hangHand(pose, -1); pose.right = hangHand(pose, 1);
   } else if (t < .16) {
-    const u = smooth((t - .1) / .06);
-    pose.stage = 'reach';
-    pose.x = mix(41, 42, u); pose.z = mix(8, 26, u);
-    pose.feet = feetAt(pose.x - Math.sin(u * Math.PI) * 3, pose.z);
-    pose.left = mix3(restHand(pose, -1), handAt(44, -1), u);
-    pose.right = mix3(restHand(pose, 1), handAt(44, 1), u);
+    jumpToBar(pose, (t - .1) / .06);
   } else if (t < .55) {
     const travel = (t - .16) / .39 * 7;
     const step = Math.min(6, Math.floor(travel)), local = travel - step;
@@ -87,6 +117,8 @@ export function coursePose(phase) {
       pose.stride = Math.sin(pose.x * TAU / 7) * Math.sin(u * Math.PI);
       pose.feet = null;
       pose.opacity = 1 - smooth((t - .94) / .04);
+      // The arms come down from the landing and swing with the walk off the course.
+      [pose.left, pose.right] = [-1, 1].map(side => mix3(restHand(pose, side), hangHand(pose, side), smooth(u / .3)));
     }
   }
   pose.left ||= restHand(pose, -1);
@@ -99,6 +131,23 @@ export function courseActors(phase) {
   // Reset at the entrance only while absent. The exit finishes at .98 and the
   // next entry starts after .01, leaving a clean gap across the loop boundary.
   return actor.opacity > 0 ? [actor] : [];
+}
+
+// Two people watch from the near side, half turned to the course and to each other. The note-taker
+// faces left, so the writing arm is the near one and body, board, hand and pen are drawn in true order.
+// The other talks the run through: an open hand towards the course while a robot is on it, lowered
+// between runs. The far figure is listed first so the nearer one is painted over it.
+export const WATCHERS = {
+  talker: { id: 'course-talker', x: 106, y: 123, scale: 1.03, heading: Math.PI * .72, lean: .5 },
+  writer: { id: 'course-observer', x: 131, y: 119, scale: 1.03, heading: -Math.PI * .66, lean: .5 },
+};
+export function courseWatchers(phase) {
+  const t = ((phase % 1) + 1) % 1, { talker, writer } = WATCHERS;
+  const forward = [Math.sin(talker.heading), Math.cos(talker.heading)], right = [Math.cos(talker.heading), -Math.sin(talker.heading)];
+  const local = (u, v, h) => [talker.x + (right[0] * u + forward[0] * v) * talker.scale, talker.y + (right[1] * u + forward[1] * v) * talker.scale, h * talker.scale];
+  const telling = smooth((t - .06) / .08) * (1 - smooth((t - .9) / .07));
+  const open = local(3.4, 10.5, 30 + 1.6 * Math.sin(t * TAU * 3)), down = local(5, .8, 18.6);
+  return [{ ...talker, rightTarget: mix3(down, open, telling) }, { ...writer, holdingBoard: { phase: t } }];
 }
 
 function steppingPost(x, y, radius, height) {
@@ -132,7 +181,6 @@ export function courseMarkup(phase) {
   }
   for (const x of [42, 104]) s += iso.box(x - 1.6, 86, 3.2, 3.2, BAR + 1.6, PAPER, PAPER, SHADE, 0, `stroke="${BLUE}" stroke-width=".7"`);
   s += iso.planLine([[42, 87.6, BAR], [104, 87.6, BAR]], `stroke="${BLUE}" stroke-width="3"`);
-  s += human3DMarkup(p, { id: 'course-observer', x: 106, y: 123, scale: 1.03, heading: Math.PI, holdingBoard: { phase }, lean: .5 });
-  s += human3DMarkup(p, { id: 'course-discussion', x: 130, y: 118, scale: 1.03, heading: -Math.PI * .56, rightTarget: [119, 114, 31 + Math.sin(phase * TAU * 2) * 2], leftTarget: [122, 123, 25], lean: .5 });
+  for (const watcher of courseWatchers(phase)) s += human3DMarkup(p, watcher);
   return s;
 }

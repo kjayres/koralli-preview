@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import test from 'node:test';
 import { servicePose, serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from '../src/scripts/art/service-scenes.mjs';
-import { coursePose, courseActors, courseMarkup } from '../src/scripts/art/service-course.mjs';
+import { coursePose, courseActors, courseMarkup, courseWatchers, JUMP, WATCHERS } from '../src/scripts/art/service-course.mjs';
 import { vanPose, vanMarkup, upright, VAN, STONE, STACK, RIDER, CATCHER, DRIVER, HELM, HIT, SPEED, TURNS, MARKS, VAN_STEPS, VAN_STILL } from '../src/scripts/art/service-van.mjs';
 
 const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
@@ -49,6 +49,84 @@ test('monkey bars keep a supporting hand on a rung and all limbs remain within r
       assert.ok(Math.hypot(...ankle.map((v, k) => v - hip[k])) <= 17.2 * pose.scale);
     });
   }
+});
+
+test('the robot walks on with its arms swinging against its legs, not held out in front', () => {
+  let swung = 0;
+  for (let i = 1; i < 400; i++) {
+    const pose = coursePose(.1 * i / 400);
+    assert.equal(pose.stage, 'start');
+    const shoulder = pose.z + 31.8 * pose.scale;
+    for (const hand of [pose.left, pose.right]) {
+      assert.ok(hand[2] < shoulder - 14, 'A walking arm hangs well below the shoulder');
+      assert.ok(Math.abs(hand[0] - pose.x) < 6, 'and stays beside the body');
+    }
+    if (Math.abs(pose.stride) > .3) {
+      swung++;
+      // The near leg leads when the stride is positive; the near arm (left) must then be behind.
+      assert.ok(Math.sign(pose.left[0] - pose.x - .6) === -Math.sign(pose.stride));
+      assert.ok(Math.sign(pose.right[0] - pose.x - .6) === Math.sign(pose.stride));
+    }
+  }
+  assert.ok(swung > 100, 'The walk has a visible swing');
+  // The same on the way off, once the arms have come down from the last landing.
+  const leaving = coursePose(.97);
+  for (const hand of [leaving.left, leaving.right]) assert.ok(hand[2] < leaving.z + 31.8 * leaving.scale - 14);
+});
+
+test('the robot crouches and springs to the first rung instead of floating up to it', () => {
+  const at = u => coursePose(.1 + .06 * u), still = at(0);
+  let lowest = Infinity, left = false;
+  for (let i = 0; i <= 1000; i++) {
+    const u = i / 1000, pose = at(Math.min(u, 1 - 1e-9));
+    assert.equal(pose.stage, 'reach');
+    lowest = Math.min(lowest, pose.z);
+    if (u < JUMP.spring) {
+      assert.ok(pose.z <= JUMP.floor, 'The body only sinks before the spring');
+      pose.feet.forEach(foot => { assert.equal(foot[0], JUMP.from); assert.equal(foot[2], JUMP.floor); });
+      for (const hand of [pose.left, pose.right]) assert.ok(hand[2] < 60, 'Hands are nowhere near the bar yet');
+    }
+    // Feet only leave the platform once the legs are straight.
+    const hip = pose.z + 18.2 * pose.scale, ankle = pose.feet[0][2] + 2.4 * pose.scale;
+    if (pose.feet[0][2] > JUMP.floor + 1e-6) { left = true; assert.ok(pose.z > JUMP.floor); }
+    else if (!left) assert.ok(hip - ankle < 17.2 * pose.scale);
+    const caught = u >= JUMP.catch;
+    assert.deepEqual(pose.grips, [caught, caught]);
+    if (caught) [pose.left, pose.right].forEach(hand => { assert.equal(hand[0], 44); assert.equal(hand[2], 72); });
+  }
+  assert.ok(lowest < JUMP.floor - 3, 'A real crouch before the jump');
+  assert.ok(at(JUMP.spring - .02).left[0] < JUMP.from - 3, 'The arms swing back as it crouches');
+  assert.ok(at(JUMP.catch).z > JUMP.hang[1], 'It catches the bar at the top of the jump');
+  // Arriving from the walk, and leaving along the bars, nothing jumps.
+  const near = (a, b) => assert.ok(Math.hypot(...a.map((v, i) => v - b[i])) < .01);
+  const walk = coursePose(.1 - 1e-7), hang = at(1 - 1e-7), bars = coursePose(.16);
+  near([walk.x, walk.z], [still.x, still.z]); near(walk.left, still.left); near(walk.right, still.right);
+  near([hang.x, hang.z], JUMP.hang); near([hang.x, hang.z], [bars.x, bars.z]);
+  near(hang.left, bars.left); near(hang.right, bars.right);
+  hang.feet.forEach((foot, i) => near(foot, bars.feet[i]));
+});
+
+test('the people watching stay put, write and gesture within reach, and are drawn the same way throughout', () => {
+  const { talker, writer } = WATCHERS;
+  // The note-taker faces left across the picture, so the writing arm is the one nearer the viewer.
+  assert.ok(Math.sin(writer.heading) < 0 && -Math.sin(writer.heading) > Math.abs(Math.cos(writer.heading)));
+  let raised = 0, lowered = 0, order = null;
+  for (let i = 0; i < 384; i++) {
+    const [first, second] = courseWatchers(i / 384);
+    assert.equal(first.id, talker.id); assert.equal(second.id, writer.id);
+    assert.deepEqual([first.x, first.y, second.x, second.y], [talker.x, talker.y, writer.x, writer.y]);
+    const shoulder = humanShoulder(talker, 1, talker.lean);
+    assert.ok(distance(first.rightTarget, shoulder) < 15.36 * talker.scale);
+    if (first.rightTarget[2] > 28 * talker.scale) raised++;
+    if (first.rightTarget[2] < 20 * talker.scale) lowered++;
+    // Limbs must not swap between in front of and behind a body from one frame to the next.
+    const markup = courseMarkup(i / 384), board = markup.indexOf('data-clipboard="writing"');
+    const figure = markup.lastIndexOf('data-human-3d', board), arms = markup.slice(figure, board).split('stroke-linejoin="round"').length;
+    order ??= arms;
+    assert.equal(arms, order);
+  }
+  assert.ok(raised > 200 && lowered > 20, 'The hand is raised while a robot is on the course and lowered between runs');
+  assert.deepEqual(courseWatchers(0), courseWatchers(1));
 });
 
 test('feet land on the posts and knees settle without the feet sliding', () => {
