@@ -82,6 +82,16 @@
   .person .eyebrow { font-size:11px; letter-spacing:.03em; text-wrap:balance; }
   .person-bio { grid-column:1; font-size:14px; }
 }
+/* On narrower phones the fixed thirds are too small for the longest link, which broke onto two lines.
+   Each link takes the width of its words and the room left over goes between them. */
+@media(max-width:389px) {
+  .site-header nav { grid-template-columns:auto auto auto; justify-content:space-between; }
+  .site-header nav .nav-views { text-wrap:balance; }
+}
+/* Narrower again there is not room for it on one line at any spacing: it takes two even lines, and no more width than they need. */
+@media(max-width:343px) {
+  .site-header nav .nav-views { max-width:7.5em; }
+}
 @media(max-height:600px) and (min-width:760px) {
   .building-copy { padding-left:20px; }
   .depth-panels { min-height:135px; }
