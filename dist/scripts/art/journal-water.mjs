@@ -1,6 +1,7 @@
-import { drawJournalSquid } from './journal-squid.mjs?v=0b54559b110a';
-import { drawDeepFish } from './journal-deep-life.mjs?v=0b54559b110a';
-import { drawJournalJelly } from './journal-jelly.mjs?v=0b54559b110a';
+import { drawJournalSquid } from './journal-squid.mjs?v=d7b3b861c46e';
+import { drawDeepFish } from './journal-deep-life.mjs?v=d7b3b861c46e';
+import { drawJournalJelly } from './journal-jelly.mjs?v=d7b3b861c46e';
+import { drawJournalSubmersible } from './journal-submersible.mjs?v=d7b3b861c46e';
 
 // The journal lives in open water. All dimensions below are CSS pixels.
 // Seeded continuous motion keeps a resize, a still frame and reduced motion stable.
@@ -189,6 +190,7 @@ function drawFrond(ctx, frond, time, current, compact) {
  * reducedMotion freezes the same composed scene. scrollProgress (0..1) is optional.
  * viewport, when supplied, is an expanded {top, bottom} band in canvas CSS pixels;
  * only whole objects outside that band are skipped. Omit it for a complete still.
+ * screen, when supplied, is the window's height, so the opening's craft can keep above the title.
  */
 export function drawJournalWater(ctx, width, height, time = 0, options = {}) {
   if (!ctx || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
@@ -213,6 +215,7 @@ export function drawJournalWater(ctx, width, height, time = 0, options = {}) {
     ctx.beginPath(); ctx.arc(x, y, p.size, 0, TAU); ctx.fill();
   }
   drawJournalJelly(ctx, width, height, seconds, { compact: scene.compact, reducedMotion: options.reducedMotion, current, viewport });
+  drawJournalSubmersible(ctx, width, height, seconds, { compact: scene.compact, reducedMotion: options.reducedMotion, viewport, screen: options.screen });
   drawJournalSquid(ctx, width, height, seconds, { compact: scene.compact, reducedMotion: options.reducedMotion, scrollProgress: scroll, viewport });
   drawDeepFish(ctx, scene, seconds, current, scroll, viewport);
   for (const habitat of scene.habitats) if (stoneVisible(habitat.stone)) drawHabitatStone(ctx, habitat.stone, scene.compact);

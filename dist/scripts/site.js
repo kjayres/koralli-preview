@@ -1,4 +1,4 @@
-import { journalViewportBand } from './journal-viewport.mjs?v=0b54559b110a';
+import { journalViewportBand } from './journal-viewport.mjs?v=d7b3b861c46e';
 
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const clamp = n => Math.min(1, Math.max(0, n));
@@ -9,11 +9,13 @@ let updateApproach = () => {};
 let journalState;
 let journalViewportDirty = true;
 const artworkLoaders = {
-  wave: () => import('./art/wave.mjs?v=0b54559b110a'),
-  approach: () => import('./art/approach.mjs?v=0b54559b110a'),
-  'work-coral': () => import('./art/coral.mjs?v=0b54559b110a'),
-  reef: () => import('./art/reef.mjs?v=0b54559b110a'),
-  'journal-water': () => import('./art/journal-water.mjs?v=0b54559b110a')
+  wave: () => import('./art/wave.mjs?v=d7b3b861c46e'),
+  approach: () => import('./art/approach.mjs?v=d7b3b861c46e'),
+  chart: () => import('./art/chart.mjs?v=d7b3b861c46e'),
+  strands: () => import('./art/strands.mjs?v=d7b3b861c46e'),
+  'work-coral': () => import('./art/coral.mjs?v=d7b3b861c46e'),
+  reef: () => import('./art/reef.mjs?v=d7b3b861c46e'),
+  'journal-water': () => import('./art/journal-water.mjs?v=d7b3b861c46e')
 };
 
 function artworkFailed(state, error) {
@@ -82,7 +84,7 @@ async function prepareArtwork(state) {
       state.reef = new state.art.Reef();
     }
     if (state.kind === 'journal-water' && document.querySelector('[data-journal-frond], [data-journal-coral]')) {
-      const { initJournalLettering } = await import('./art/journal-lettering.mjs?v=0b54559b110a');
+      const { initJournalLettering } = await import('./art/journal-lettering.mjs?v=d7b3b861c46e');
       state.updateJournalLettering = initJournalLettering();
     }
     state.loaded = true;
@@ -108,6 +110,9 @@ function paint(state, dt = 0) {
     }
     const options = { reducedMotion: motion.matches, pointer: state.pointer, variant: state.variant };
     if (kind === 'wave') state.art.drawWave(ctx, w, h, state.time, options);
+    // Opening artwork is told where the copy lies over it, and keeps clear of it.
+    if (kind === 'chart') state.art.drawChart(ctx, w, h, state.time, { ...options, quiet: state.quiet });
+    if (kind === 'strands') state.art.drawStrands(ctx, w, h, state.time, { ...options, quiet: state.quiet });
     if (kind === 'approach') {
       const presentation = state.art.drawApproach(ctx, w, h, state.time, { ...options, phase: state.phase || 0 });
       if (presentation) {
@@ -123,7 +128,7 @@ function paint(state, dt = 0) {
       // with the context translating them into the small visible pixel buffer.
       const top = state.viewport.top;
       canvasOffset(state, top);
-      state.art.drawJournalWater(ctx, w, h, state.time, { ...options, viewport: state.viewport });
+      state.art.drawJournalWater(ctx, w, h, state.time, { ...options, viewport: state.viewport, screen: innerHeight });
       if (state.headingVisible || motion.matches) state.updateJournalLettering?.(state.time, options);
     }
     if (kind === 'work-coral') {
@@ -209,16 +214,30 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
     }, { passive: true });
     hero.addEventListener('pointerleave', () => { state.pointerTarget.strength = 0; });
   }
+  // Copy laid over an opening's artwork: its box within the canvas, measured again whenever either changes.
+  const copy = state.host.querySelector('[data-art-quiet]');
+  const measureQuiet = () => {
+    if (!copy) return false;
+    const host = state.host.getBoundingClientRect(), box = copy.getBoundingClientRect();
+    const quiet = { x: box.left - host.left, y: box.top - host.top, width: box.width, height: box.height };
+    const moved = !state.quiet || Object.keys(quiet).some(key => Math.abs(quiet[key] - state.quiet[key]) > .5);
+    if (moved) state.quiet = quiet;
+    return moved;
+  };
   const resize = () => {
     if (state.failed) return;
     try {
       const rect = state.kind === 'approach'
         ? { width: canvas.parentElement.clientWidth, height: canvas.parentElement.clientHeight }
         : canvas.parentElement.getBoundingClientRect();
+      const quietMoved = measureQuiet();
       const dpr = Math.min(devicePixelRatio || 1, state.kind === 'journal-water' ? 1.5 : 2);
       const bufferHeight = state.kind === 'journal-water'
         ? journalViewportBand(rect.height, rect.top, innerHeight).height : rect.height;
-      if (state.w === rect.width && state.h === rect.height && state.dpr === dpr && state.bufferHeight === bufferHeight) return;
+      if (state.w === rect.width && state.h === rect.height && state.dpr === dpr && state.bufferHeight === bufferHeight) {
+        if (quietMoved) paint(state);
+        return;
+      }
       state.w = rect.width;
       state.h = rect.height;
       state.dpr = dpr;
@@ -235,7 +254,9 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
       else paint(state);
     } catch (error) { artworkFailed(state, error); }
   };
-  new ResizeObserver(resize).observe(canvas.parentElement);
+  const resized = new ResizeObserver(resize);
+  resized.observe(canvas.parentElement);
+  if (copy) resized.observe(copy);
   if (state.kind === 'journal-water') addEventListener('resize', resize);
   new IntersectionObserver(entries => {
     state.visible = entries[0].isIntersecting;
@@ -246,7 +267,8 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
   }).observe(state.kind === 'journal-water' ? state.host : canvas);
   canvasStates.push(state);
   resize();
-  if (state.kind === 'wave' || state.kind === 'journal-water') prepareArtwork(state);
+  // Artwork at the head of a page is on screen from the start, so it is prepared at once.
+  if (['wave', 'journal-water', 'chart', 'strands'].includes(state.kind)) prepareArtwork(state);
   else {
     const nearby = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting) return;
@@ -257,7 +279,7 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
   }
 }
 
-if (document.querySelector('[data-approach]')) import('./approach-view.mjs?v=0b54559b110a').then(({ initApproach }) => {
+if (document.querySelector('[data-approach]')) import('./approach-view.mjs?v=d7b3b861c46e').then(({ initApproach }) => {
   updateApproach = initApproach(phase => {
     const state = canvasStates.find(item => item.kind === 'approach');
     if (!state) return;
@@ -395,7 +417,7 @@ depths.forEach((button, i) => button.addEventListener('click', () => {
   scrollTo({ top, behavior: 'smooth' });
 }));
 
-if (building && svg) import('./art/building.mjs?v=0b54559b110a').then(module => {
+if (building && svg) import('./art/building.mjs?v=d7b3b861c46e').then(module => {
   preserveReadingPosition(() => {
     // First prove the renderer works while the complete static copy is still present.
     module.updateBuilding(svg, 0, motion.matches);
@@ -429,7 +451,7 @@ if (thesisStage) {
     if (thesisVisible) updateThesisScroll();
     schedule();
   }).observe(thesisStage);
-  import('./art/thesis-cards.mjs?v=0b54559b110a').then(({ initThesisCards }) => {
+  import('./art/thesis-cards.mjs?v=d7b3b861c46e').then(({ initThesisCards }) => {
     renderThesis = initThesisCards(thesisStage);
     updateThesisScroll();
     schedule();
@@ -445,7 +467,7 @@ function seaIsDarkAt(y) {
   return within(chamber) && chamber.dataset.depthTheme === '1';
 }
 if (seaAnchor) {
-  import('./sea-anchor.mjs?v=0b54559b110a')
+  import('./sea-anchor.mjs?v=d7b3b861c46e')
     .then(({ initSeaAnchor }) => { updateSeaAnchor = initSeaAnchor(seaAnchor, { darkAt: seaIsDarkAt }); })
     .catch(error => console.error('Unable to initialise the anchor:', error));
 }
@@ -454,7 +476,7 @@ if (seaAnchor) {
 const depthGauge = document.querySelector('.depth-gauge');
 let updateDepthGauge = () => {};
 if (depthGauge) {
-  import('./depth-gauge.mjs?v=0b54559b110a')
+  import('./depth-gauge.mjs?v=d7b3b861c46e')
     .then(({ initDepthGauge }) => { updateDepthGauge = initDepthGauge(depthGauge, { building, motion, darkAt: seaIsDarkAt }); })
     .catch(error => console.error('Unable to initialise the depth gauge:', error));
 }
@@ -462,7 +484,7 @@ if (depthGauge) {
 // A hermit crab under a stone at the foot of Views from the Reef.
 const reefCrab = document.querySelector('[data-reef-crab]');
 if (reefCrab) {
-  import('./reef-crab.mjs?v=0b54559b110a')
+  import('./reef-crab.mjs?v=d7b3b861c46e')
     .then(({ initReefCrab }) => initReefCrab(reefCrab))
     .catch(error => console.error('Unable to initialise the hermit crab:', error));
 }

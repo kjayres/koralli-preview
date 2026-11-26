@@ -463,7 +463,7 @@ function human3DMarkup(p, {
 /**
  * Isometric 3D articulated blue SVG robot/agent with rotating torso and dual gripper arms.
  */
-function robotMarkup(p, { x, y, z = 0, scale = 0.84, heading = 0, target = [x, y + 14, 24], held = '', stride = 0, leftTarget = null, rightTarget = null, footTargets = null } = {}) {
+function robotMarkup(p, { x, y, z = 0, scale = 0.84, heading = 0, target = [x, y + 14, 24], held = '', stride = 0, leftTarget = null, rightTarget = null, footTargets = null, elbow = null } = {}) {
   const s = scale;
   const forward = [Math.sin(heading), Math.cos(heading), 0];
   const right = [Math.cos(heading), -Math.sin(heading), 0];
@@ -565,7 +565,9 @@ function robotMarkup(p, { x, y, z = 0, scale = 0.84, heading = 0, target = [x, y
       target[1] + right[1] * side * 6.0 * s,
       target[2],
     ];
-    const mid = requested ? joint(shoulder, hand, 10.5 * s, add3(mul3(right, side), mul3(forward, -.35))) : [
+    // Explicit hand targets bend the elbow outwards unless a scene says which way it should point:
+    // `elbow(side, { right, forward })` returns that direction, for example down and back when carrying.
+    const mid = requested ? joint(shoulder, hand, 10.5 * s, elbow ? elbow(side, { right, forward }) : add3(mul3(right, side), mul3(forward, -.35))) : [
       (shoulder[0] + hand[0]) * 0.5 + (right[0] * side * 2.2 - forward[0] * 1.6) * s,
       (shoulder[1] + hand[1]) * 0.5 + (right[1] * side * 2.2 - forward[1] * 1.6) * s,
       Math.max(z + 16 * s, (shoulder[2] + hand[2]) * 0.5 - 2.0 * s),
