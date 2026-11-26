@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createApproachScene, updateApproachScene, approachPresentation } from '../src/scripts/art/approach.mjs';
+import { GROW_START } from '../src/scripts/art/adapt-grow.mjs';
 import { researchTargets, RESEARCH_FORM_COUNT } from '../src/scripts/art/research.mjs';
 
 // Changing the destination of a settled tool must not impart a sudden kick.
@@ -43,6 +44,21 @@ assert.ok(heap.every(p => floor - p.y < .23), 'No grains freeze above the founda
 const root = scene.field.particles[scene.grow.root];
 assert.ok(heap.some(p => Math.hypot(root.x - p.x, root.y - p.y) < (root.r + p.r) * 1.5),
   'The visible root is a real grain supported by the mound');
+
+// The trunk sets off early, so by then the heap must have landed and the root must be resting on it.
+for (const width of [240, 400]) {
+  const early = createApproachScene(width, width);
+  let time = 0;
+  updateApproachScene(early, width, width, time, { phase: 1 });
+  for (let frame = 0; frame < 60 * 6; frame++) updateApproachScene(early, width, width, time += 1 / 60, { phase: 1 });
+  updateApproachScene(early, width, width, time, { phase: 2 });
+  while (early.age < GROW_START) updateApproachScene(early, width, width, time += 1 / 60, { phase: 2 });
+  const ground = early.field.bounds.bottom, grains = [...early.grow.rock.keys()].map(id => early.field.particles[id]);
+  assert.ok(grains.every(p => ground - p.y < .25), 'The heap has landed before the trunk sets off');
+  const seed = early.field.particles[early.grow.root];
+  assert.ok(grains.some(p => Math.hypot(seed.x - p.x, seed.y - p.y) < (seed.r + p.r) * 3), 'The root is on the heap as the trunk sets off');
+  assert.ok(Math.hypot(seed.vx, seed.vy) < .2, 'The root has all but come to rest as the trunk sets off');
+}
 
 for (const width of [240, 400]) {
   const still = createApproachScene(width, width);

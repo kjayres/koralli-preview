@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { createApproachScene, updateApproachScene, approachPresentation, drawApproach } from '../src/scripts/art/approach.mjs';
 import { researchTargets, RESEARCH_FORM_COUNT } from '../src/scripts/art/research.mjs';
-import { HEAP } from '../src/scripts/art/adapt-grow.mjs';
+import { HEAP, HEAP_TINT, BRANCH, branchWeight, GROW_START, ROOT_SETTLE } from '../src/scripts/art/adapt-grow.mjs';
 
 const costs = [];
 const sizes = process.argv.includes('--visual-only') ? [] : [400, 240, 418, 224, 260];
@@ -322,16 +322,35 @@ assert.ok(Math.min(...centre.map(p => p.scale)) > Math.max(...middle.map(p => p.
 assert.ok(Math.min(...middle.map(p => p.scale)) > Math.max(...edge.map(p => p.scale)), 'The middle must enlarge grains more than the rim');
 assert.ok(edge.every(p => p.scale < 1.002 && p.output - p.input < .002), 'Position and size must approach the unchanged field smoothly at the rim');
 
-// Adapt & Grow: a coral of fine blue branches grows up from the heap through the grey grains.
+// Adapt & Grow: a coral of curved blue branches, firmer at the trunk, grows up from the soft blue heap
+// through the grey grains.
 const coralCtx = recorder();
 const grainFills = ctx => ctx.fills.filter(fill => fill.path.length === 1 && fill.path[0].arc);
-const branches = ctx => ctx.strokeRecords.filter(stroke => /^rgba\(36,78,255,/.test(stroke.style));
+const branches = ctx => ctx.strokeRecords.filter(stroke => stroke.style.startsWith(`rgba(${BRANCH.join(',')},`));
 const finalCoral = drawApproach(coralCtx, 400, 400, 0, { phase: 2, reducedMotion: true });
 assert.equal(finalCoral.caption, '03 / ADAPT & GROW');
-assert.equal(branches(coralCtx).length, 1, 'The coral is drawn as one stroke of fine branches');
+assert.equal(branches(coralCtx).length, finalCoral.edges.length, 'Every branch of the coral is drawn once');
+assert.ok(branches(coralCtx).every(({ path }) => path.length === 2 && path[1].curve), 'Branches are curves, not ruled lines between grains');
 assert.ok(finalCoral.edges.length >= 20, 'The still coral must show its full form');
 assert.ok(finalCoral.edges.every(({ progress }) => progress >= 0 && progress <= 1));
-assert.ok(branches(coralCtx)[0].width < 1.1 && branches(coralCtx)[0].alpha === 1, 'Branches keep a fine line weight');
+{
+  // The trunk is about twice as firm as a twig, and everything stays a fine line.
+  const weights = branches(coralCtx).map(({ width }) => width), fine = Math.min(...weights), firm = Math.max(...weights);
+  assert.ok(branches(coralCtx).every(({ alpha }) => alpha === 1));
+  assert.ok(fine >= .83 && fine < 1.2, 'Twigs keep a fine line weight');
+  assert.ok(firm > fine * 1.7 && firm <= .84 * branchWeight(1), 'The trunk is firmer than the twigs, without becoming heavy');
+  // The trunk runs up from the root, and each fork carries less than the stem below it.
+  const trunk = finalCoral.edges.findIndex(({ from }) => !finalCoral.edges.some(({ to }) => to === from));
+  assert.equal(weights[trunk], firm, 'The firmest branch is the trunk');
+  finalCoral.edges.forEach(({ from, to }, i) => finalCoral.edges.forEach((child, j) => {
+    if (child.from === to) assert.ok(weights[j] <= weights[i] + 1e-9, 'A branch is never firmer than the stem it grows from');
+  }));
+  // Grains in the water are grey; the heap keeps a soft share of the blue it was built from.
+  const tones = new Set(coralCtx.fills.filter(fill => fill.path.length === 1 && fill.path[0].arc).slice(0, 1800).map(fill => fill.style));
+  assert.deepEqual([...tones].sort(), ['rgb(112,119,131)', `rgb(${HEAP_TINT.join(',')})`].sort());
+  assert.ok(HEAP_TINT[2] > HEAP_TINT[0] + 100 && HEAP_TINT[2] > HEAP_TINT[1] + 100, 'The heap reads as blue, not grey');
+  assert.ok(ROOT_SETTLE < GROW_START && GROW_START <= 2.8, 'The trunk sets off soon after the heap has landed');
+}
 assert.equal(grainFills(coralCtx).length, 1800 + finalCoral.marks.length, 'Every grain stays drawn; coral grains are marked over them');
 const stillCoral = structuredClone({ fills: coralCtx.fills, strokes: coralCtx.strokeRecords });
 coralCtx.reset();
