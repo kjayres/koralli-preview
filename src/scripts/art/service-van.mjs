@@ -15,21 +15,23 @@ const SECONDS = VAN_STEPS / 16;
 
 // The same camera angle as the other service cards, centred on the van and a touch closer, so the
 // load and its labels read at card size.
-const p = makeProjector({ originX: 280, originY: 219, centerX: 98, centerY: 83, angle: -14, scale: 2.08, pitch: .43 });
+const p = makeProjector({ originX: 280, originY: 219, centerX: 104, centerY: 83, angle: -14, scale: 2.08, pitch: .43 });
 const iso = isoPrimitives(p);
 
 // The van, in its own frame: it heads along +x, so the camera sees its near side and its front.
+// A glass load box, then a cab behind a raked windscreen, then a bonnet ahead of it, as a van has.
 export const VAN = {
-  rear: 44, front: 154, far: 62, near: 100, pillar: 124, screenTop: 148,
-  chassis: 7, floor: 11, waist: 27, roof: 59, rail: 56,
-  axles: { rear: 62, front: 140 }, wheel: 6.5, tyre: 4.6, housing: 8.6,
+  rear: 44, pillar: 124, screenTop: 136, scuttle: 148, nose: 165, far: 62, near: 100,
+  chassis: 7, floor: 11, hood: 29.5, waist: 32, roof: 59, rail: 56,
+  axles: { rear: 62, front: 150 }, wheel: 6.5, tyre: 4.6, housing: 8.6,
 };
-export const ROAD = { from: 18, to: 188, far: 40, near: 126 };
+export const ROAD = { from: 24, to: 194, far: 40, near: 126 };
 export const STONE = { height: 3.2, track: 98.3 };
 export const STACK = { x: 66, y: 73, length: 26, depth: 16, height: 11, labels: ['Value', 'Work', 'Cost'] };
 export const RIDER = { id: 'van-rider', x: 56, y: 81, scale: 1, heading: Math.PI / 2 };
 export const CATCHER = { id: 'van-catcher', x: 105.5, y: 81, scale: 1, heading: -Math.PI / 2 };
-export const DRIVER = { x: 129.5, y: 76, z: 6.2, scale: .86, heading: Math.PI / 2 };
+// The driver sits on the far side, as in a British van, clear of the near windscreen pillar.
+export const DRIVER = { x: 131.5, y: 71, z: 6.2, scale: .86, heading: Math.PI / 2 };
 export const HELM = { x: DRIVER.x + 15.9, y: DRIVER.y, z: 31.6, radius: 3.4, rake: 28 * Math.PI / 180 };
 
 // The wheels turn a whole number of times a loop and the lane marks repeat exactly, so the road closes.
@@ -175,8 +177,11 @@ export function vanMarkup(phase) {
   const pose = vanPose(phase);
   const van = through(p, sprung(pose.body)), body = isoPrimitives(van);
   const face = (points, fill, extra) => body.polygon(points.map(pt => van(...pt)), fill, extra);
-  const profile = y => [[VAN.rear, y, VAN.floor], [VAN.front, y, VAN.floor], [VAN.front, y, VAN.waist], [VAN.screenTop, y, VAN.roof], [VAN.rear, y, VAN.roof]];
-  const { axles } = VAN, length = VAN.front - VAN.rear, width = VAN.near - VAN.far, tall = VAN.roof - VAN.floor;
+  // One side of the van: the glass of the load box and cab window, the door below it, and the bonnet.
+  const glass = y => [[VAN.rear, y, VAN.floor], [VAN.pillar, y, VAN.floor], [VAN.pillar, y, VAN.waist], [VAN.scuttle, y, VAN.waist], [VAN.screenTop, y, VAN.roof], [VAN.rear, y, VAN.roof]];
+  const door = y => [[VAN.pillar, y, VAN.floor], [VAN.scuttle, y, VAN.floor], [VAN.scuttle, y, VAN.waist], [VAN.pillar, y, VAN.waist]];
+  const wing = y => [[VAN.scuttle, y, VAN.floor], [VAN.nose, y, VAN.floor], [VAN.nose, y, VAN.hood], [VAN.scuttle, y, VAN.waist]];
+  const { axles } = VAN, length = VAN.nose - VAN.rear, width = VAN.near - VAN.far, tall = VAN.roof - VAN.floor;
 
   let s = road(pose) + stone(pose) + streaks(pose, false);
   s += iso.surface(VAN.rear + 4, VAN.far + 4, length - 8, width - 5, .06, SHADE, 'stroke="none" fill-opacity=".6"');
@@ -184,8 +189,9 @@ export function vanMarkup(phase) {
 
   // Chassis and the far glass. The process stays visible inside.
   s += body.box(VAN.rear, VAN.far, length, width, VAN.floor - VAN.chassis, PAPER, PAPER, SHADE, VAN.chassis);
-  s += body.box(VAN.front, VAN.far + 2, 2, width - 4, 4.4, PAPER, PAPER, SHADE, VAN.chassis + .4, 'stroke-width=".8"');
-  s += face(profile(VAN.far), GLASS, 'fill-opacity=".13" stroke-opacity=".5"');
+  s += body.box(VAN.nose, VAN.far + 2, 2, width - 4, 4.4, PAPER, PAPER, SHADE, VAN.chassis + .4, 'stroke-width=".8"');
+  s += face(glass(VAN.far), GLASS, 'fill-opacity=".13" stroke-opacity=".5"');
+  s += face(door(VAN.far), PAPER, 'stroke-opacity=".5"');
   s += body.panelY(VAN.rear, VAN.far, VAN.floor, width, tall, GLASS, 'fill-opacity=".11" stroke-opacity=".5"');
   s += body.planLine([[VAN.pillar, VAN.far, VAN.floor], [VAN.pillar, VAN.far, VAN.roof]], 'stroke-opacity=".4"');
   // The rail the rider holds, hung from the roof.
@@ -218,24 +224,26 @@ export function vanMarkup(phase) {
     const angle = i * TAU / 16;
     return van(HELM.x - Math.sin(angle) * Math.sin(HELM.rake) * HELM.radius, HELM.y + Math.cos(angle) * HELM.radius, HELM.z + Math.sin(angle) * Math.cos(HELM.rake) * HELM.radius);
   });
-  let helm = body.planLine([[HELM.x, HELM.y, HELM.z], [VAN.front - 2.5, HELM.y, VAN.waist]], 'stroke-width="1.2"');
+  let helm = body.planLine([[HELM.x, HELM.y, HELM.z], [VAN.scuttle - .6, HELM.y, VAN.waist - 3]], 'stroke-width="1.2"');
   helm += body.polygon(rim, 'none', 'stroke-width="1.3"');
   for (const hand of pose.driver.hands) helm += body.planLine([[HELM.x, HELM.y, HELM.z], hand], 'stroke-width=".8"');
   const [leftHand, rightHand] = pose.driver.hands;
   s += robotMarkup(van, { ...DRIVER, leftTarget: leftHand, rightTarget: rightHand, footTargets: pose.driver.feet, held: helm });
 
-  // The nose, windscreen, roof and near glass close over everything inside.
-  s += body.panelY(VAN.front, VAN.far, VAN.floor, width, VAN.waist - VAN.floor, PAPER, 'stroke-width=".9"');
-  s += body.surface(VAN.front - 5, VAN.far, 5, width, VAN.waist, PAPER, 'stroke-width=".7"');
-  for (const y of [VAN.far + 6.5, VAN.near - 6.5]) {
-    s += body.polygon(Array.from({ length: 12 }, (_, i) => van(VAN.front + .05, y + Math.cos(i * TAU / 12) * 2.7, 19.5 + Math.sin(i * TAU / 12) * 2.7)), PAPER, 'stroke-width=".8"');
-  }
-  for (const z of [18.2, 20.8]) s += body.planLine([[VAN.front + .05, VAN.far + 13, z], [VAN.front + .05, VAN.near - 13, z]], 'stroke-width=".7" stroke-opacity=".7"');
-  s += face([[VAN.front, VAN.far, VAN.waist], [VAN.front, VAN.near, VAN.waist], [VAN.screenTop, VAN.near, VAN.roof], [VAN.screenTop, VAN.far, VAN.roof]], GLASS, 'fill-opacity=".1" stroke-opacity=".65"');
+  // The roof, windscreen and bonnet close over everything inside, and the driver's legs go under the bonnet.
   s += face([[VAN.rear, VAN.far, VAN.roof], [VAN.screenTop, VAN.far, VAN.roof], [VAN.screenTop, VAN.near, VAN.roof], [VAN.rear, VAN.near, VAN.roof]], GLASS, 'fill-opacity=".08" stroke-opacity=".5"');
-  s += face(profile(VAN.near), GLASS, 'fill-opacity=".06" stroke-opacity=".75"');
-  s += body.planLine([[VAN.pillar, VAN.near, VAN.floor], [VAN.pillar, VAN.near, VAN.roof]], 'stroke-opacity=".65"');
-  s += body.planLine([[VAN.pillar, VAN.near, VAN.waist], [VAN.front, VAN.near, VAN.waist]], 'stroke-opacity=".5"');
+  s += face([[VAN.scuttle, VAN.far, VAN.waist], [VAN.scuttle, VAN.near, VAN.waist], [VAN.screenTop, VAN.near, VAN.roof], [VAN.screenTop, VAN.far, VAN.roof]], GLASS, 'fill-opacity=".1" stroke-opacity=".65"');
+  s += face([[VAN.scuttle, VAN.far, VAN.waist], [VAN.nose, VAN.far, VAN.hood], [VAN.nose, VAN.near, VAN.hood], [VAN.scuttle, VAN.near, VAN.waist]], PAPER, 'stroke-width=".9"');
+  s += body.panelY(VAN.nose, VAN.far, VAN.floor, width, VAN.hood - VAN.floor, SHADE, 'stroke-width=".9"');
+  for (const y of [VAN.far + 6.5, VAN.near - 6.5]) {
+    s += body.polygon(Array.from({ length: 12 }, (_, i) => van(VAN.nose + .05, y + Math.cos(i * TAU / 12) * 2.8, 21.4 + Math.sin(i * TAU / 12) * 2.8)), PAPER, 'stroke-width=".8"');
+  }
+  for (const z of [19.8, 22.8]) s += body.planLine([[VAN.nose + .05, VAN.far + 13, z], [VAN.nose + .05, VAN.near - 13, z]], 'stroke-width=".7" stroke-opacity=".7"');
+  // The near side: glass over the load and the cab window, a door below the window, and the wing.
+  s += face(glass(VAN.near), GLASS, 'fill-opacity=".06" stroke-opacity=".75"');
+  s += face(door(VAN.near), PAPER, 'stroke-width=".9"') + face(wing(VAN.near), PAPER, 'stroke-width=".9"');
+  s += body.planLine([[VAN.pillar, VAN.near, VAN.waist], [VAN.pillar, VAN.near, VAN.roof]], 'stroke-opacity=".65"');
+  s += body.planLine([[VAN.pillar + 2.6, VAN.near + .05, VAN.waist - 4], [VAN.pillar + 6.2, VAN.near + .05, VAN.waist - 4]], 'stroke-width="1.3"');
   for (const x of [VAN.rear + 6, VAN.rear + 13]) s += body.planLine([[x, VAN.near + .05, 30], [x + 7, VAN.near + .05, 53]], 'stroke-opacity=".19" stroke-width="1.6"');
 
   // Wheel housings move with the body; the wheels themselves follow the road.
