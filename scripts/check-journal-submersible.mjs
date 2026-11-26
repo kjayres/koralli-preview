@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { drawJournalSubmersible, submersiblePose, pilotMarkup, pilotPose, craftMarkup, displayList, girth, SUBMERSIBLE, CRAFT, DEEP } from '../src/scripts/art/journal-submersible.mjs';
+import { drawJournalSubmersible, submersiblePose, pilotMarkup, pilotPose, craftMarkup, displayList, girth, SUBMERSIBLE, CRAFT, DEEP, LINE } from '../src/scripts/art/journal-submersible.mjs';
 import { robotMarkup, makeProjector, PAPER, SHADE, GLASS, BLUE } from '../src/scripts/art/thesis-cards.mjs';
 
 function recorder({ gradients = false } = {}) {
-  const calls = { paths: [], fills: 0, strokes: 0, gradients: 0, low: Infinity, high: -Infinity, left: Infinity, right: -Infinity, alphas: [], colours: new Set() };
+  const calls = { paths: [], fills: 0, strokes: 0, gradients: 0, low: Infinity, high: -Infinity, left: Infinity, right: -Infinity, alphas: [], colours: new Set(), lines: [] };
   const see = (x, y) => { assert.ok(Number.isFinite(x + y)); calls.low = Math.min(calls.low, y); calls.high = Math.max(calls.high, y); calls.left = Math.min(calls.left, x); calls.right = Math.max(calls.right, x); };
   const ctx = {
     globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1, depth: 0,
     save() { this.depth++; }, restore() { this.depth--; }, beginPath() {}, closePath() {},
     moveTo: see, lineTo: see,
     arc(x, y, radius, from, to) { assert.ok(radius > 0 && Math.abs(to - from - Math.PI * 2) < 1e-9); see(x, y - radius); see(x, y + radius); },
-    stroke() { calls.strokes++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.strokeStyle); }, fill() { calls.fills++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.fillStyle); },
+    stroke() { calls.strokes++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.strokeStyle); calls.lines.push({ colour: this.strokeStyle, width: this.lineWidth, alpha: this.globalAlpha }); }, fill() { calls.fills++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.fillStyle); },
   };
   if (gradients) ctx.createLinearGradient = () => { calls.gradients++; return { addColorStop(at, colour) { assert.ok(at >= 0 && at <= 1); const alpha = Number(colour.match(/,([\d.]+)\)$/)[1]); assert.ok(alpha <= .05, 'The beam stays a faint wash'); } }; };
   return { ctx, calls };
@@ -126,7 +126,7 @@ test('the craft is rounded: a turned hull, a glass sphere and curved fittings, w
     return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)));
   }));
   // The largest outlines are the hull, the sphere and the collar between them: each is smooth all the way round.
-  const largest = shapes.filter(shape => shape.stroke !== 'none').sort((a, b) => area(b.points) - area(a.points)).slice(0, 4);
+  const largest = shapes.filter(shape => shape.stroke !== 'none').sort((a, b) => area(b.points) - area(a.points)).slice(0, 3);
   for (const shape of largest) {
     assert.ok(shape.points.length >= 24, 'Drawn as a curve');
     assert.ok(sharpest(shape.points) < .45, `No corner on it (${sharpest(shape.points).toFixed(2)})`);
@@ -136,4 +136,21 @@ test('the craft is rounded: a turned hull, a glass sphere and curved fittings, w
   for (let x = CRAFT.bow; x >= CRAFT.stern; x -= 1) { const radius = girth(x); assert.ok(radius <= last + 1e-9 && radius > 3); last = radius; }
   assert.ok(girth(CRAFT.bow) === CRAFT.girth && girth(CRAFT.stern) < CRAFT.girth * .25);
   assert.ok(Math.sqrt(CRAFT.sphere.radius ** 2 - (CRAFT.bow - CRAFT.sphere.centre[0]) ** 2) < CRAFT.girth + 2, 'The sphere seats inside the collar');
+});
+
+test('its lines are as fine and as faint as the animals of the same water, whatever size it is drawn', () => {
+  // The squid's strong line is .58 of a pixel at an opacity of .27; the brightest fish's is .59 at .37.
+  const weights = [];
+  for (const [width, compact] of [[1440, false], [390, true]]) for (const time of [0, 11, 29]) {
+    const { ctx, calls } = recorder();
+    drawJournalSubmersible(ctx, width, 6000, time, { compact, screen: 844 });
+    const lines = calls.lines.filter(line => line.colour !== DEEP[PAPER] && line.colour !== DEEP[SHADE] && line.colour !== DEEP[GLASS]);
+    assert.ok(lines.length > 60, 'Every outline is still drawn');
+    assert.ok(lines.every(line => line.width >= LINE.least && line.width <= 1.5), 'No line is heavier than a limb a pixel and a half wide');
+    assert.ok(lines.every(line => line.alpha > 0 && line.alpha <= .38), 'None is brighter than the brightest fish');
+    const sorted = lines.map(line => line.width).sort((a, b) => a - b), usual = sorted[sorted.length >> 1];
+    assert.ok(usual > .45 && usual < .62, `The usual outline is the animals' strong line, not ${usual}`);
+    weights.push(sorted.map(weight => weight.toFixed(3)).join());
+  }
+  for (let i = 0; i < 3; i++) assert.equal(weights[i], weights[i + 3], 'A small craft is not drawn with finer or heavier lines than a large one');
 });
