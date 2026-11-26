@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import test from 'node:test';
-import { servicePose, serviceSceneMarkup } from '../src/scripts/art/service-scenes.mjs';
-import { serviceReveal } from '../src/scripts/services.mjs';
+import { servicePose, serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from '../src/scripts/art/service-scenes.mjs';
 import { coursePose, courseActors, courseMarkup } from '../src/scripts/art/service-course.mjs';
 
 test('all scenes close their physical loops without a jump', () => {
@@ -128,130 +127,151 @@ test('frames have finite geometry, unique figure clips and balanced SVG groups',
   }
 });
 
-test('each card has a readable interval and all three settle before the release', () => {
-  assert.equal(serviceReveal(0, 0), 0, 'The first card fades in with the scroll, like the following cards.');
-  assert.ok(serviceReveal(.1, 0) > 0 && serviceReveal(.1, 0) < 1);
-  assert.deepEqual([0, 1, 2].map(i => serviceReveal(.22, i)), [1, 0, 0]);
-  assert.deepEqual([0, 1, 2].map(i => serviceReveal(.5, i)), [1, 1, 0]);
-  assert.deepEqual([0, 1, 2].map(i => serviceReveal(.75, i)), [1, 1, 1]);
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 100; j++) {
-    assert.ok(serviceReveal(j / 100, i) <= serviceReveal((j + 1) / 100, i));
-  }
-});
-
-test('services sit outside the approach hold, inside the same main landmark', async () => {
+test('services sit outside the approach hold, inside the same main landmark, with no hold of their own', async () => {
   const html = await fs.readFile(new URL('../src/our-work.html', import.meta.url), 'utf8');
   assert.equal((html.match(/<main\b/g) || []).length, 1);
   assert.match(html, /<main id="main">\s*<div[^>]*data-approach-shell/);
   assert.match(html, /<\/section>\s*<\/div>\s*<\/div>\s*<section[^>]*data-services/);
   assert.ok(html.indexOf('data-services') < html.indexOf('</main>'));
+  assert.doesNotMatch(html, /data-services-shell|data-services-page/, 'Nothing wraps the page to hold it beside the cards');
+  const source = await fs.readFile(new URL('../src/scripts/services.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /scrollTo|pushState|preventDefault|sticky/, 'The cards never move, hold or intercept the page');
 });
 
-async function controller({ width = 1200, height = 800, reduced = false, stageHeight = 500, hash = '' } = {}) {
-  const events = new Map(), frames = new Map(), classes = new Set(), style = () => ({ setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; } });
-  let observer, resizer, frameID = 0, renders = 0;
-  const classList = { toggle(k, value) { value ? classes.add(k) : classes.delete(k); } };
-  const pageTop = () => {
-    const flow = 100 - context.scrollY, distance = Math.max(900, context.innerHeight * 1.5);
-    return classes.has('services-page-pinned') ? Math.min(Math.max(flow, -1976), flow + distance) : flow;
-  };
-  const shell = { style: style(), classList, getBoundingClientRect: () => ({ top: 100 - context.scrollY }) };
-  const page = { getBoundingClientRect: () => ({ top: pageTop(), height: 3400 }), contains: target => target === section || target === footer };
-  const footer = { id: 'contact', closest: () => null, getBoundingClientRect: () => ({ top: pageTop() + 2600 }) };
+test('cards are hidden only while the script is waiting to reveal them, and arrive a moment apart', async () => {
+  const css = await fs.readFile(new URL('../src/styles/services.css', import.meta.url), 'utf8');
+  assert.match(css, /\.services-reveal \.service \{[^}]*opacity:0/);
+  assert.doesNotMatch(css.match(/\.services-reveal \.service \{[^}]*\}/)[0], /transition/, 'Hiding is instant and offscreen; only the arrival is animated');
+  assert.match(css, /\.services-reveal\.services-shown \.service \{[^}]*opacity:1[^}]*transition:/);
+  const delays = [...css.matchAll(/\.services-reveal\.services-shown \.service:nth-child\((\d)\) \{ transition-delay:\.(\d+)s; \}/g)].map(m => [Number(m[1]), Number(`.${m[2]}`)]);
+  assert.deepEqual(delays.map(([card]) => card), [2, 3]);
+  assert.ok(delays[0][1] > 0 && delays[0][1] < delays[1][1] && delays[1][1] <= .3, 'The stagger is short');
+  assert.match(css, /prefers-reduced-motion:reduce\) \{\s*\.services-reveal \.service \{[^}]*opacity:1[^}]*transition:none/);
+  // Without the script, or before it runs, nothing hides the offerings.
+  for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    if (/opacity:0/.test(rule[2])) assert.match(rule[1], /\.services-reveal/);
+  }
+});
+
+async function controller({ width = 1200, height = 800, reduced = false, cardTop = 2100 } = {}) {
+  const events = new Map(), frames = new Map(), classes = new Set(), observers = [], stills = [];
+  let frameID = 0, renders = 0, moved = 0;
+  const classList = { add: k => classes.add(k), remove: k => classes.delete(k) };
+  const top = () => cardTop - context.scrollY;
   const svgs = [0, 1, 2].map(() => ({ set innerHTML(v) { renders++; } }));
-  const cards = svgs.map(svg => ({ style: style(), querySelector: () => svg, getBoundingClientRect: () => ({ top: pageTop() + 2100, bottom: pageTop() + 2500 }) }));
-  const stage = { getBoundingClientRect: () => ({ top: pageTop() + 2000, height: stageHeight }) };
-  const section = { id: 'services', style: style(), classList, contains: target => target === section, querySelector: () => stage, querySelectorAll: () => cards, getBoundingClientRect: () => ({ top: pageTop() + 1964 }) };
+  const cards = svgs.map(svg => ({ querySelector: () => svg, getBoundingClientRect: () => ({ top: top(), bottom: top() + 400 }) }));
+  const stage = { name: 'stage' }, list = { name: 'list', getBoundingClientRect: () => ({ top: top() - 20 }) };
+  const section = { id: 'services', classList, querySelector: selector => ({ '[data-services-stage]': stage, '.service-list': list })[selector], querySelectorAll: () => cards };
   const motion = { matches: reduced, addEventListener: (name, fn) => events.set('motion', fn) };
-  const document = { hidden: false, querySelector: selector => ({ '[data-services]': section, '[data-services-shell]': shell, '[data-services-page]': page })[selector], querySelectorAll: () => [], getElementById: id => ({ services: section, contact: footer })[id], addEventListener: (name, fn) => events.set(name, fn) };
+  const document = { hidden: false, querySelector: selector => selector === '[data-services]' ? section : null, addEventListener: (name, fn) => events.set(name, fn) };
   const context = vm.createContext({
     document, innerWidth: width, innerHeight: height, scrollY: 0,
-    location: { hash }, history: { pushState() {} },
-    matchMedia: () => motion, getComputedStyle: () => ({ paddingTop: '70' }),
+    matchMedia: () => motion,
     addEventListener: (name, fn) => events.set(name, fn),
     requestAnimationFrame: fn => { frames.set(++frameID, fn); return frameID; }, cancelAnimationFrame: id => frames.delete(id),
-    IntersectionObserver: class { constructor(fn) { observer = fn; } observe() {} },
-    ResizeObserver: class { constructor(fn) { resizer = fn; } observe() {} },
-    scrollTo: ({ top }) => { context.scrollY = top; },
+    IntersectionObserver: class { constructor(fn, options = {}) { this.fn = fn; this.options = options; observers.push(this); } observe(target) { this.target = target; } disconnect() { this.gone = true; } },
+    scrollTo: () => { moved++; },
   });
   const source = await fs.readFile(new URL('../src/scripts/services.mjs', import.meta.url), 'utf8');
   const mod = new vm.SourceTextModule(source, { context });
-  await mod.link(() => new vm.SyntheticModule(['serviceSceneMarkup'], function () { this.setExport('serviceSceneMarkup', () => '<g/>'); }, { context }));
+  await mod.link(() => new vm.SyntheticModule(['serviceSceneMarkup', 'SERVICE_STEPS', 'SERVICE_STILL'], function () {
+    this.setExport('serviceSceneMarkup', (index, phase) => { stills.push([index, phase]); return '<g/>'; });
+    this.setExport('SERVICE_STEPS', SERVICE_STEPS);
+    this.setExport('SERVICE_STILL', SERVICE_STILL);
+  }, { context }));
   await mod.evaluate();
-  return { context, section, shell, page, footer, stage, cards, classes, motion, frames, document, events, get renders() { return renders; },
+  const watching = target => observers.find(observer => observer.target === target);
+  return { context, section, cards, classes, motion, frames, document, events, stills, watching, stage, list,
+    get renders() { return renders; }, get moved() { return moved; },
     scroll(y) { context.scrollY = y; events.get('scroll')(); },
-    intersect(value) { observer([{ isIntersecting: value }]); },
-    resize(w, h) { context.innerWidth = w; context.innerHeight = h; resizer(); },
+    near(value) { watching(stage).fn([{ isIntersecting: value }], watching(stage)); },
+    // The browser reports once when observation begins, then whenever the first card crosses the line.
+    report(value) { const observer = watching(list); if (!observer.gone) observer.fn([{ isIntersecting: value }], observer); },
+    enter() { this.report(true); },
     tick(time) { const batch = [...frames.values()]; frames.clear(); batch.forEach(fn => fn(time)); },
   };
 }
 
-test('controller pins only when cards fit and preserves progress on resize', async () => {
+test('the cards wait, then arrive together once as the section comes into view', async () => {
   const view = await controller();
-  assert.ok(view.classes.has('services-pinned'));
-  view.scroll(2076 + 1200 * .5);
-  assert.equal(view.cards[1].style['--service-opacity'], '1.000');
-  assert.equal(view.cards[2].style['--service-opacity'], '0.000');
-  view.resize(1200, 900);
-  assert.equal(view.cards[1].style['--service-opacity'], '1.000');
-  view.resize(390, 844);
-  assert.ok(!view.classes.has('services-pinned'));
-  assert.equal(view.shell.style.height, undefined);
-  assert.ok(view.cards.every(card => card.style['--service-opacity'] === '1.000'));
-  view.resize(1200, 500);
-  assert.ok(!view.classes.has('services-pinned'));
+  assert.equal(view.classes.size, 0, 'Nothing is hidden before the browser has said where the cards are');
+  assert.match(view.watching(view.list).options.rootMargin, /^0px 0px -\d+% 0px$/, 'They arrive once the first card has properly entered');
+  view.report(false);
+  assert.ok(view.classes.has('services-reveal') && !view.classes.has('services-shown'), 'Below the fold they wait, out of sight');
+  view.scroll(900); view.report(false);
+  assert.ok(!view.classes.has('services-shown'));
+  view.enter();
+  assert.ok(view.classes.has('services-shown'));
+  assert.ok(view.watching(view.list).gone, 'Once shown they stay; the reveal never replays');
+  view.scroll(0); view.scroll(5000); view.scroll(1800);
+  assert.ok(view.classes.has('services-shown'));
+  assert.equal(view.moved, 0, 'Scrolling is never held or redirected');
 });
 
-test('unrevealed, offscreen and hidden artwork does no drawing; reduced motion is static', async () => {
+test('cards already on screen or behind the reader when the page opens are never hidden', async () => {
+  for (const scrollY of [1500, 1800, 4000]) {
+    const view = await controller();
+    view.context.scrollY = scrollY;
+    view.report(scrollY === 1800);
+    assert.ok(!view.classes.has('services-reveal'), 'A deep link must not blink the offerings out and in');
+    assert.ok(view.classes.has('services-shown') && view.watching(view.list).gone);
+  }
+});
+
+test('unrevealed, offscreen and hidden artwork does no drawing', async () => {
   const view = await controller();
-  view.intersect(true);
-  assert.equal(view.frames.size, 0);
-  view.scroll(2076 + 1200 * .22);
+  view.report(false);
+  view.scroll(1800);
+  view.near(true);
+  assert.equal(view.frames.size, 0, 'Nothing is drawn behind a card that has not arrived');
+  view.enter();
+  assert.equal(view.frames.size, 1);
   view.tick(100);
-  assert.equal(view.renders, 1);
-  view.intersect(false);
+  assert.equal(view.renders, 3);
+  view.tick(120);
+  assert.equal(view.renders, 3, 'The artwork keeps a fixed 16fps clock');
+  view.tick(200);
+  assert.equal(view.renders, 6);
+  view.near(false);
   assert.equal(view.frames.size, 0);
-  view.intersect(true);
+  view.near(true);
   view.document.hidden = true;
   view.events.get('visibilitychange')();
   assert.equal(view.frames.size, 0);
   view.document.hidden = false;
   view.events.get('visibilitychange')();
   assert.equal(view.frames.size, 1);
+  view.scroll(0);
+  view.tick(300);
+  assert.equal(view.frames.size, 0, 'Cards scrolled out of view stop drawing');
+  assert.equal(view.renders, 6);
+});
+
+test('reduced motion shows every card at once with one still moment each', async () => {
+  const view = await controller();
+  view.report(false); view.scroll(1800); view.near(true); view.enter(); view.tick(100);
   view.motion.matches = true;
   view.events.get('motion')();
   assert.equal(view.frames.size, 0);
-  assert.ok(!view.classes.has('services-pinned'));
-  assert.equal(view.renders, 4);
+  assert.ok(!view.classes.has('services-reveal') && view.classes.has('services-shown'));
+  assert.deepEqual(view.stills.slice(-3), [0, 1, 2].map(i => [i, SERVICE_STILL[i]]));
+  view.tick(900);
+  assert.equal(view.frames.size, 0);
+
+  const still = await controller({ reduced: true });
+  assert.ok(!still.classes.has('services-reveal') && still.classes.has('services-shown'), 'Nothing waits for a scroll position');
+  assert.deepEqual(still.stills, [0, 1, 2].map(i => [i, SERVICE_STILL[i]]));
+  still.report(false);
+  assert.ok(!still.classes.has('services-reveal'));
+  still.scroll(1800); still.near(true); still.enter();
+  assert.equal(still.frames.size, 0);
 });
 
-test('the actual footer stays beside the cards throughout the hold, then normal scrolling resumes', async () => {
-  const view = await controller();
-  view.scroll(2076 + 1200 * .2);
-  assert.equal(view.stage.getBoundingClientRect().top, 24);
-  assert.equal(view.footer.getBoundingClientRect().top, 624);
-  view.scroll(2076 + 1200 * .8);
-  assert.equal(view.stage.getBoundingClientRect().top, 24);
-  assert.equal(view.footer.getBoundingClientRect().top, 624);
-  assert.equal(view.section.style.height, undefined);
-  view.scroll(2076 + 1200 + 100);
-  assert.equal(view.stage.getBoundingClientRect().top, -76);
-  assert.equal(view.footer.getBoundingClientRect().top, 524);
-});
-
-test('contact navigation skips the hold and reaches the real footer', async () => {
-  const view = await controller();
-  view.scroll(2400);
-  view.context.location.hash = '#contact';
-  view.events.get('hashchange')();
-  assert.equal(view.footer.getBoundingClientRect().top, 0);
-});
-
-test('a service deep link lands at the heading and stops replaying once the reader interacts', async () => {
-  const view = await controller({ hash: '#services' });
-  assert.equal(view.stage.getBoundingClientRect().top, 24);
-  view.events.get('keydown')();
-  view.scroll(2076 + 1200 * .6);
-  view.resize(1200, 900);
-  assert.ok(view.cards[2].style['--service-opacity'] > 0);
+test('each scene has a loop length and a still moment that reads on its own', () => {
+  assert.equal(SERVICE_STEPS.length, 3); assert.equal(SERVICE_STILL.length, 3);
+  SERVICE_STEPS.forEach(steps => assert.ok(Number.isInteger(steps) && steps >= 160 && steps <= 400));
+  SERVICE_STILL.forEach((phase, scene) => {
+    assert.ok(phase >= 0 && phase < 1);
+    assert.equal(serviceSceneMarkup(scene), serviceSceneMarkup(scene, phase), 'The first paint is the still moment');
+  });
 });

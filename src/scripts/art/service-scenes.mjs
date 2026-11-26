@@ -133,9 +133,13 @@ function transparency(t) {
 
 
 const scenes = [workflow, transparency, courseMarkup];
-export function serviceSceneMarkup(index, phase = .2) {
+// Loop length of each scene in sixteenths of a second, and the moment shown when nothing moves:
+// the first paint, and the whole card under reduced motion.
+export const SERVICE_STEPS = [224, 256, 384];
+export const SERVICE_STILL = [.2, .2, .2];
+export function serviceSceneMarkup(index, phase = SERVICE_STILL[index]) {
   return group(scenes[index](((phase % 1) + 1) % 1));
 }
 export function serviceArtwork(index) {
-  return `<svg viewBox="0 0 560 330" fill="none" aria-hidden="true" focusable="false" data-service-scene="${index}">${serviceSceneMarkup(index, .2)}</svg>`;
+  return `<svg viewBox="0 0 560 330" fill="none" aria-hidden="true" focusable="false" data-service-scene="${index}">${serviceSceneMarkup(index)}</svg>`;
 }
