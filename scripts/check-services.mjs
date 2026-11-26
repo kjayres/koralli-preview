@@ -4,11 +4,23 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { servicePose, serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from '../src/scripts/art/service-scenes.mjs';
 import { coursePose, courseActors, courseMarkup } from '../src/scripts/art/service-course.mjs';
+import { vanPose, vanMarkup, upright, VAN, STONE, STACK, RIDER, CATCHER, DRIVER, HELM, HIT, SPEED, TURNS, MARKS, VAN_STEPS, VAN_STILL } from '../src/scripts/art/service-van.mjs';
+
+const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+// Every number in a pose, however it is nested.
+const numbers = value => typeof value === 'number' ? [value] : Object.values(value).flatMap(numbers);
+// A figure's shoulder, from the same construction the drawing uses.
+function humanShoulder(who, side, lean, floor = 0) {
+  const forward = [Math.sin(who.heading), Math.cos(who.heading)], right = [Math.cos(who.heading), -Math.sin(who.heading)];
+  return [who.x + (right[0] * side * 4.25 + forward[0] * lean * .92) * who.scale, who.y + (right[1] * side * 4.25 + forward[1] * lean * .92) * who.scale, floor + 33.5 * who.scale];
+}
 
 test('all scenes close their physical loops without a jump', () => {
-  const values = object => Object.values(object).flat();
   for (let scene = 0; scene < 2; scene++) {
-    const first = values(servicePose(scene, 0)), last = values(servicePose(scene, 1 - 1e-7));
+    // A scene's clock runs on through the loop; its physical state must return to where it began.
+    const state = phase => { const { clock, ...rest } = servicePose(scene, phase); return rest; };
+    const first = numbers(state(0)), last = numbers(state(1 - 1e-7));
+    assert.ok(first.length > 3 && first.length === last.length);
     first.forEach((value, i) => assert.ok(Math.abs(value - last[i]) < .002, `scene ${scene}, coordinate ${i}`));
     assert.deepEqual(servicePose(scene, 0), servicePose(scene, 1));
   }
@@ -84,19 +96,102 @@ test('only one robot is visible, with an empty interval before the next entry', 
   assert.equal(courseMarkup(0), courseMarkup(1), 'The entire rendered scene closes its loop.');
 });
 
-test('cloth remains on the glass and within the human arm reach', () => {
-  for (let i = 0; i < 300; i++) {
-    const { x, heading, wipe } = servicePose(1, i / 300);
-    assert.equal(wipe[1], 118);
-    const right = [Math.cos(heading), -Math.sin(heading)], forward = [Math.sin(heading), Math.cos(heading)];
-    const targets = [[wipe[0] - 1.4, 118, wipe[2]], [wipe[0] + 1.4, 118, wipe[2]]];
-    if (right[0] < 0) targets.reverse();
-    targets.forEach((hand, j) => {
-      const side = j ? 1 : -1;
-      const shoulder = [x + right[0] * side * 4.25 + forward[0] * .4 * .92, 112 + right[1] * side * 4.25 + forward[1] * .4 * .92, 33.5];
-      assert.ok(Math.hypot(...hand.map((v, k) => v - shoulder[k])) < 15.36);
+test('the van meets the stone once a loop, front wheel then rear, and rides it on its springs', () => {
+  const seconds = VAN_STEPS / 16, at = time => vanPose(time / seconds);
+  assert.ok(HIT.rear > HIT.front && Math.abs(HIT.rear - HIT.front - (VAN.axles.front - VAN.axles.rear) / SPEED) < 1e-9, 'The rear wheel reaches the stone a wheelbase later');
+  for (const [axle, time] of [['front', HIT.front], ['rear', HIT.rear]]) {
+    assert.ok(Math.abs(at(time).clock.stone - VAN.axles[axle]) < 1e-6, `The stone is under the ${axle} axle at its hit`);
+    assert.ok(Math.abs(at(time).lift[axle] - STONE.height) < 1e-6, 'A wheel on top of the stone is lifted by its height');
+    assert.ok(at(time + .08).body[axle] > 1 && at(time + .08).body[axle] < STONE.height + .5, 'The body follows on its spring, without leaping');
+    assert.ok(at(time + .4).body[axle] < 0, 'A spring rebounds before it settles');
+  }
+  let lifted = 0;
+  for (let i = 0; i < 4000; i++) {
+    const pose = vanPose(i / 4000);
+    for (const axle of ['front', 'rear']) {
+      const reach = Math.abs(pose.clock.stone - VAN.axles[axle]);
+      assert.ok(pose.lift[axle] >= 0 && pose.lift[axle] <= STONE.height + 1e-9);
+      if (reach > VAN.wheel) assert.equal(pose.lift[axle], 0, 'A wheel only rises while it is on the stone');
+      // The housing moves with the body and the wheel with the road: they must never meet.
+      assert.ok(pose.lift[axle] - pose.body[axle] < VAN.housing - VAN.wheel - .1, 'A wheel stays inside its housing');
+    }
+    if (pose.lift.front || pose.lift.rear) lifted++;
+    assert.ok(Math.abs(pose.tilt) < .11, 'Riders wobble; nobody falls');
+    assert.ok(pose.squash >= -.012 && pose.squash <= .08);
+  }
+  assert.ok(lifted / 4000 < .05, 'The stone is an occasional event, not the whole journey');
+  // Calm before the stone and again well before the loop closes, so the still moment is a clean one.
+  for (const phase of [0, VAN_STILL, HIT.front / seconds - .02, .75, .999]) {
+    const pose = vanPose(phase);
+    numbers([pose.lift, pose.body, pose.tilt, pose.squash, pose.slide, pose.hops, pose.steer]).forEach(value => assert.ok(Math.abs(value) < .01));
+  }
+});
+
+test('the road, wheels and air close their loop exactly', () => {
+  assert.ok(Number.isInteger(TURNS) && Number.isInteger(MARKS), 'Whole wheel turns and whole lane marks in a loop');
+  assert.ok(Math.abs(SPEED * VAN_STEPS / 16 - TURNS * Math.PI * 2 * VAN.wheel) < 1e-9, 'The wheels roll without slipping');
+  // At 16 frames a second a five-spoked wheel must turn less than half a spoke per frame, or it strobes.
+  assert.ok(SPEED / VAN.wheel / 16 < Math.PI / 5);
+  assert.equal(vanMarkup(0), vanMarkup(1));
+  const still = vanMarkup(VAN_STILL);
+  assert.ok(still.indexOf('>Value<') < still.indexOf('>Work<') && still.indexOf('>Work<') < still.indexOf('>Cost<'), 'Cost, Work and Value are stacked in view, read from the top');
+  assert.doesNotMatch(still, /<g opacity/, 'The still moment is clean road: no stone in sight');
+});
+
+test('the load hops and slips into waiting hands, then is eased back into line', () => {
+  const seconds = VAN_STEPS / 16;
+  let furthest = 0;
+  for (let i = 0; i < 4000; i++) {
+    const pose = vanPose(i / 4000);
+    assert.ok(pose.slide >= 0 && pose.slide < 4, 'The top crate slips a little, towards the catcher');
+    assert.ok(pose.hops.every(height => height >= 0) && pose.hops[2] >= pose.hops[1] && pose.hops[1] >= pose.hops[0], 'Crates never pass through one another');
+    assert.ok(pose.hops[2] < 2.5 && VAN.floor + STACK.height * 3 + pose.hops[2] < VAN.rail - 4, 'The load stays well clear of the rail and roof');
+    furthest = Math.max(furthest, pose.slide);
+    // Both of the catcher's hands stay flat on the top crate's leading face, wherever it goes.
+    pose.catcher.hold.forEach((hand, j) => {
+      assert.ok(Math.abs(hand[0] - (STACK.x + STACK.length + pose.slide + 1.25)) < 1e-9);
+      assert.ok(Math.abs(hand[2] - (VAN.floor + STACK.height * 2.5 + pose.hops[2])) < 1e-9);
+      assert.equal(hand[1], CATCHER.y + (j ? 3.4 : -3.4));
     });
   }
+  assert.ok(furthest > 3, 'The slip is large enough to see');
+  assert.ok(vanPose((HIT.front - .1) / seconds).slide === 0, 'Nothing moves before the stone');
+  assert.ok(vanPose((HIT.rear + .6) / seconds).slide > 3, 'The crate is held where it was caught');
+  assert.ok(vanPose((HIT.rear + 2.4) / seconds).slide < .01, 'and is back in line soon after');
+});
+
+test('hands stay planted and within reach while the riders sway, and the driver keeps the wheel', () => {
+  const still = vanPose(VAN_STILL);
+  for (let i = 0; i < 2000; i++) {
+    const pose = vanPose(i / 2000), settle = upright(pose.tilt, pose.squash);
+    assert.deepEqual(pose.rider.grip, still.rider.grip, 'The hand on the rail never lets go');
+    assert.equal(pose.rider.grip[2], VAN.rail - .3);
+    // Reach is measured on the upright figure, as the drawing solves it.
+    assert.ok(distance(settle(pose.rider.grip), humanShoulder(RIDER, 1, pose.rider.lean, VAN.floor)) < 15.36 * RIDER.scale);
+    assert.ok(distance(pose.rider.loose, humanShoulder(RIDER, -1, pose.rider.lean, VAN.floor)) < 15.36 * RIDER.scale);
+    assert.ok(pose.rider.loose[2] < VAN.floor + 20 * RIDER.scale, 'The free arm hangs; it only swings a little');
+    pose.catcher.hold.forEach((hand, j) => {
+      const reach = distance(settle(hand), humanShoulder(CATCHER, j ? 1 : -1, pose.catcher.lean, VAN.floor));
+      assert.ok(reach < 15.36 * CATCHER.scale && reach > 6, 'Arms give as the crate arrives, without folding up');
+    });
+    assert.equal(pose.rider.lean, -pose.catcher.lean, 'Facing each other, both riders are thrown the same way');
+    pose.driver.hands.forEach((hand, j) => {
+      assert.ok(Math.abs(distance(hand, [HELM.x, HELM.y, HELM.z]) - HELM.radius) < 1e-9, 'Both hands stay on the rim');
+      const side = j ? 1 : -1, shoulder = [DRIVER.x + .2 * DRIVER.scale, DRIVER.y - side * 6.4 * DRIVER.scale, DRIVER.z + 31.8 * DRIVER.scale];
+      assert.ok(distance(hand, shoulder) < 21 * DRIVER.scale);
+    });
+    assert.ok(distance(...pose.driver.hands) > HELM.radius * 1.99, 'on opposite sides of it');
+    assert.deepEqual(pose.driver.feet, still.driver.feet, 'The driver stays seated');
+    pose.driver.feet.forEach((foot, j) => {
+      const hip = [DRIVER.x, DRIVER.y + (j ? -2.4 : 2.4) * DRIVER.scale, DRIVER.z + 18.2 * DRIVER.scale];
+      assert.ok(distance([foot[0], foot[1], foot[2] + 2.4 * DRIVER.scale], hip) < 17.2 * DRIVER.scale);
+    });
+  }
+  // The swaying figure, moved back into the van, puts its hand exactly where the pose says.
+  const thrown = vanPose((HIT.rear + .25) / (VAN_STEPS / 16)), back = upright(thrown.tilt, thrown.squash);
+  assert.ok(Math.abs(thrown.tilt) > .03);
+  const [x, y, z] = back(thrown.rider.grip), height = z - VAN.floor;
+  assert.ok(distance([x + thrown.tilt * height, y, VAN.floor + height * (1 - thrown.squash)], thrown.rider.grip) < 1e-9);
 });
 
 test('the agent module meets the board and its human grips stay reachable', () => {

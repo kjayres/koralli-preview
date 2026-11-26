@@ -1,5 +1,6 @@
 import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE, CORAL } from './thesis-cards.mjs';
 import { courseMarkup, coursePose } from './service-course.mjs';
+import { vanMarkup, vanPose, VAN_STEPS, VAN_STILL } from './service-van.mjs';
 
 const TAU = Math.PI * 2;
 const clamp = n => Math.max(0, Math.min(1, n));
@@ -15,7 +16,7 @@ const key = (t, frames) => {
 // The same camera as the homepage relay, framed a little closer for three cards.
 const p = makeProjector({ originX: 280, originY: 218, centerX: 100, centerY: 83, angle: -14, scale: 1.9, pitch: .43 });
 const iso = isoPrimitives(p);
-const { box, surface, panelX, panelY, planLine, line, ruledNote } = iso;
+const { box, panelX, planLine } = iso;
 const group = body => `<g stroke="${BLUE}" stroke-width=".9" stroke-linecap="round" stroke-linejoin="round">${body}</g>`;
 const floor = () => box(20, 30, 165, 106, 2, PAPER, PAPER, SHADE, -2, 'stroke-opacity=".5"');
 const table = (x, y, w, d, h = 23) => {
@@ -29,21 +30,6 @@ const splitFigure = markup => {
   return [back + '</g>', '<g>' + front];
 };
 
-const wipePath = [[0, 57], [.08, 57], [.45, 140], [.53, 140], [.9, 57], [1, 57]];
-const turningStep = (t, turns) => turns.reduce((step, [start, end]) => step + (t > start && t < end ? Math.sin((t - start) / (end - start) * TAU) * .55 : 0), 0);
-function strideAt(t, frames, distance, period = 7) {
-  let speed = 0;
-  for (let i = 1; i < frames.length; i++) {
-    const [a, x] = frames[i - 1], [b, y] = frames[i];
-    if (t <= b) {
-      const u = clamp((t - a) / (b - a));
-      speed = Math.abs(y - x) * 6 * u * (1 - u) / (b - a);
-      break;
-    }
-  }
-  return Math.sin(distance * TAU / period) * clamp(speed / 60) || 0;
-}
-
 // Export the physical state as well as the renderer, so tests can check loops,
 // foot motion and reachable hand targets independently.
 export function servicePose(index, phase) {
@@ -52,11 +38,7 @@ export function servicePose(index, phase) {
     const change = key(t, [[0, 0], [.17, 0], [.42, 1], [.78, 1], [1, 0]]);
     return { change, chip: [93, 73, 24 + 8 * (1 - change)] };
   }
-  if (index === 1) {
-    const x = key(t, wipePath);
-    const heading = key(t, [[0, Math.PI / 2], [.45, Math.PI / 2], [.53, -Math.PI / 2], [.9, -Math.PI / 2], [1, Math.PI / 2]]);
-    return { x, heading, stride: strideAt(t, wipePath, x) + turningStep(t, [[.45, .53], [.9, 1]]), wipe: [x + Math.sin(heading) * 3, 118, 33 + 6 * Math.sin(t * TAU * 5)], work: [83 + 2 * Math.sin(t * TAU), 86, 22], cleared: key(t, [[0, 0], [.08, 0], [.45, 1], [.88, 1], [1, 0]]) };
-  }
+  if (index === 1) return vanPose(t);
   return coursePose(t);
 }
 
@@ -96,47 +78,11 @@ function workflow(t) {
   return s;
 }
 
-function transparency(t) {
-  const state = servicePose(1, t);
-  let s = floor();
-  // Thin framed glass, not a solid building. The process remains visible inside.
-  s += panelX(45, 42, 0, 110, 58, GLASS, 'fill-opacity=".16" stroke-opacity=".55"');
-  s += panelY(45, 42, 0, 76, 58, GLASS, 'fill-opacity=".12" stroke-opacity=".55"');
-  s += surface(45, 42, 110, 76, 58, GLASS, 'fill-opacity=".1" stroke-opacity=".45"');
-  for (const x of [45, 100, 155]) s += planLine([[x, 42, 0], [x, 42, 58], [x, 118, 58]], 'stroke-opacity=".5"');
-  const worker = human3DMarkup(p, { id: 'service-analyst', x: 81, y: 74, scale: .98, heading: 0, lean: .7, leftTarget: [78, 85, 23], rightTarget: state.work, held: SPLIT });
-  const [workerBack, workerFront] = splitFigure(worker);
-  const machine = robotMarkup(p, { x: 125, y: 73, scale: .96, heading: 0, target: [125 + 2 * Math.sin(t * TAU + 1), 86, 24], held: SPLIT });
-  const [machineBack, machineFront] = machine.split(SPLIT);
-  s += workerBack + machineBack + table(64, 82, 77, 17, 21);
-  for (const x of [69, 98, 125]) s += ruledNote(x, 85, 11, 9, 21.1, x === 69 ? CORAL : BLUE, true);
-  s += planLine([[81, 90, 21.2], [97, 90, 21.2]], 'stroke-opacity=".5"');
-  s += planLine([[110, 90, 21.2], [124, 90, 21.2]], 'stroke-opacity=".5"');
-  s += machineFront + workerFront;
-  const [wx, wy, wz] = state.wipe;
-  s += human3DMarkup(p, { id: 'service-glass-worker', x: state.x, y: 112, scale: 1, heading: state.heading, stride: state.stride, rightTarget: [wx + 1.4, wy, wz], leftTarget: [wx - 1.4, wy, wz], lean: .4 });
-  s += panelY(155, 42, 0, 76, 58, GLASS, 'fill-opacity=".09" stroke-opacity=".6"');
-  s += panelX(45, 118, 0, 110, 58, GLASS, 'fill-opacity=".07" stroke-opacity=".65"');
-  // The cleaned strip follows the person across the glass and stays clear on
-  // the return pass. Costs, work and outputs become visible in one process.
-  s += `<defs><mask id="service-frost" maskUnits="userSpaceOnUse" x="0" y="0" width="560" height="330"><rect width="560" height="330" fill="white"/>${panelX(48, 118, 17, 104 * state.cleared, 30, '#000', 'stroke="none"')}</mask></defs>`;
-  s += panelX(45, 118.03, 0, 110, 58, PAPER, 'fill-opacity=".68" stroke="none" mask="url(#service-frost)"');
-  for (const x of [56, 64, 135, 143]) s += planLine([[x, 118.1, 16], [x + 7, 118.1, 40]], 'stroke-opacity=".19" stroke-width="1.6"');
-  s += panelX(wx - 2.4, wy + .05, wz - 2.1, 4.8, 4.2, PAPER, `stroke="${CORAL}" stroke-width="1.1"`);
-  for (const [x, text] of [[55, 'Cost'], [93, 'Work'], [128, 'Value']]) {
-    const origin = p(x, 118.1, 51), dx = p(x + 1, 118.1, 51), dy = p(x, 118.1, 50);
-    s += `<text transform="matrix(${dx[0] - origin[0]} ${dx[1] - origin[1]} ${dy[0] - origin[0]} ${dy[1] - origin[1]} ${origin[0]} ${origin[1]})" font-family="Instrument Sans, sans-serif" font-size="6.2" fill="${BLUE}" stroke="none">${text}</text>`;
-  }
-  s += planLine([[45, 118, 58], [45, 118, 0], [155, 118, 0], [155, 118, 58]], 'stroke-opacity=".7"');
-  return s;
-}
-
-
-const scenes = [workflow, transparency, courseMarkup];
+const scenes = [workflow, vanMarkup, courseMarkup];
 // Loop length of each scene in sixteenths of a second, and the moment shown when nothing moves:
 // the first paint, and the whole card under reduced motion.
-export const SERVICE_STEPS = [224, 256, 384];
-export const SERVICE_STILL = [.2, .2, .2];
+export const SERVICE_STEPS = [224, VAN_STEPS, 384];
+export const SERVICE_STILL = [.2, VAN_STILL, .2];
 export function serviceSceneMarkup(index, phase = SERVICE_STILL[index]) {
   return group(scenes[index](((phase % 1) + 1) % 1));
 }
