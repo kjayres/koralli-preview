@@ -128,7 +128,7 @@ function paint(state, dt = 0) {
       // with the context translating them into the small visible pixel buffer.
       const top = state.viewport.top;
       canvasOffset(state, top);
-      state.art.drawJournalWater(ctx, w, h, state.time, { ...options, viewport: state.viewport });
+      state.art.drawJournalWater(ctx, w, h, state.time, { ...options, viewport: state.viewport, screen: innerHeight });
       if (state.headingVisible || motion.matches) state.updateJournalLettering?.(state.time, options);
     }
     if (kind === 'work-coral') {
