@@ -1,0 +1,61 @@
+/* Full-screen openings for Our Work and Who We Are. As on the homepage, the copy is set at the foot
+   of the first screen and the artwork takes the open paper above it. Each has one reading order:
+   the heading, a lead in a comfortable measure, then quieter supporting copy in a column beside it. */
+.work-opening,
+.people-hero {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  max-width:none;
+  min-height:max(100svh,640px);
+  margin:0;
+  padding:170px var(--gutter) 72px;
+  overflow:hidden;
+}
+/* Who We Are has more to say, so on a short screen it runs a little past the fold to keep open paper above it. */
+.people-hero { min-height:max(100svh,740px); }
+/* The artwork lies behind the copy and never takes part in layout. */
+.work-opening > canvas,
+.people-hero > canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.work-opening-copy,
+.people-hero-copy { position:relative; display:block; width:100%; max-width:calc(1420px - 2 * var(--gutter)); margin:0 auto; }
+.work-opening h1,
+.people-hero h1 { max-width:none; margin:0 0 36px; font-size:clamp(40px,4.5vw,64px); text-wrap:balance; }
+.work-opening-text,
+.people-opening { display:grid; grid-template-columns:minmax(0,23em) minmax(0,31em); justify-content:start; column-gap:clamp(40px,6.5vw,104px); row-gap:0; align-items:start; }
+
+/* Our Work: the lead, and beneath it the one line the page turns on; how we go about it alongside. */
+.work-opening-text > p { margin:0; }
+.work-opening-lead { grid-column:1; grid-row:1; max-width:31ch; font-size:clamp(19px,1.5vw,22px); line-height:1.42; letter-spacing:-.015em; color:var(--ink); text-wrap:pretty; }
+.work-opening-text > .work-opening-thesis { grid-column:1; grid-row:2; max-width:31ch; margin-top:20px; font-size:clamp(19px,1.5vw,22px); line-height:1.42; letter-spacing:-.015em; color:var(--ink); text-wrap:balance; }
+.work-opening-thesis strong { font-weight:600; }
+.work-opening-text > .work-opening-support { grid-column:2; grid-row:1 / span 2; max-width:39ch; margin-top:.2em; font-size:16px; line-height:1.65; color:#5c5b58; text-wrap:pretty; }
+
+/* Who We Are: the lead, with the way on to the team closing the foot of the column; the detail alongside. */
+.people-opening { grid-template-rows:auto 1fr; }
+.people-opening > .lead { grid-column:1; grid-row:1; max-width:none; font-size:clamp(19px,1.5vw,22px); line-height:1.42; text-wrap:pretty; }
+.people-opening-detail { grid-column:2; grid-row:1 / span 2; max-width:none; margin-top:.2em; }
+.people-opening-detail p { text-wrap:pretty; }
+.people-opening > .text-link { grid-column:1; grid-row:2; justify-self:start; align-self:end; margin-top:34px; }
+
+@media (max-width:759px) {
+  .work-opening,
+  .people-hero { min-height:100svh; padding:150px var(--gutter) 56px; }
+  /* A phone's screen is filled by this copy alone, so a band of paper is kept above it for the rope. */
+  .people-hero { padding-top:262px; }
+  .work-opening h1,
+  .people-hero h1 { margin-bottom:26px; font-size:clamp(38px,9.5vw,48px); }
+  .work-opening-text,
+  .people-opening { grid-template-columns:minmax(0,1fr); grid-template-rows:none; }
+  .work-opening-lead,
+  .work-opening-text > .work-opening-thesis,
+  .work-opening-text > .work-opening-support,
+  .people-opening > .lead,
+  .people-opening-detail,
+  .people-opening > .text-link { grid-column:1; grid-row:auto; max-width:none; }
+  .work-opening-text > .work-opening-thesis { margin-top:16px; }
+  .work-opening-text > .work-opening-support { margin-top:22px; font-size:15px; }
+  .people-opening-detail { margin-top:24px; }
+  .people-opening > .text-link { align-self:start; margin-top:30px; }
+}

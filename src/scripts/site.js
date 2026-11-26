@@ -11,6 +11,8 @@ let journalViewportDirty = true;
 const artworkLoaders = {
   wave: () => import('./art/wave.mjs'),
   approach: () => import('./art/approach.mjs'),
+  chart: () => import('./art/chart.mjs'),
+  strands: () => import('./art/strands.mjs'),
   'work-coral': () => import('./art/coral.mjs'),
   reef: () => import('./art/reef.mjs'),
   'journal-water': () => import('./art/journal-water.mjs')
@@ -108,6 +110,9 @@ function paint(state, dt = 0) {
     }
     const options = { reducedMotion: motion.matches, pointer: state.pointer, variant: state.variant };
     if (kind === 'wave') state.art.drawWave(ctx, w, h, state.time, options);
+    // Opening artwork is told where the copy lies over it, and keeps clear of it.
+    if (kind === 'chart') state.art.drawChart(ctx, w, h, state.time, { ...options, quiet: state.quiet });
+    if (kind === 'strands') state.art.drawStrands(ctx, w, h, state.time, { ...options, quiet: state.quiet });
     if (kind === 'approach') {
       const presentation = state.art.drawApproach(ctx, w, h, state.time, { ...options, phase: state.phase || 0 });
       if (presentation) {
@@ -209,16 +214,30 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
     }, { passive: true });
     hero.addEventListener('pointerleave', () => { state.pointerTarget.strength = 0; });
   }
+  // Copy laid over an opening's artwork: its box within the canvas, measured again whenever either changes.
+  const copy = state.host.querySelector('[data-art-quiet]');
+  const measureQuiet = () => {
+    if (!copy) return false;
+    const host = state.host.getBoundingClientRect(), box = copy.getBoundingClientRect();
+    const quiet = { x: box.left - host.left, y: box.top - host.top, width: box.width, height: box.height };
+    const moved = !state.quiet || Object.keys(quiet).some(key => Math.abs(quiet[key] - state.quiet[key]) > .5);
+    if (moved) state.quiet = quiet;
+    return moved;
+  };
   const resize = () => {
     if (state.failed) return;
     try {
       const rect = state.kind === 'approach'
         ? { width: canvas.parentElement.clientWidth, height: canvas.parentElement.clientHeight }
         : canvas.parentElement.getBoundingClientRect();
+      const quietMoved = measureQuiet();
       const dpr = Math.min(devicePixelRatio || 1, state.kind === 'journal-water' ? 1.5 : 2);
       const bufferHeight = state.kind === 'journal-water'
         ? journalViewportBand(rect.height, rect.top, innerHeight).height : rect.height;
-      if (state.w === rect.width && state.h === rect.height && state.dpr === dpr && state.bufferHeight === bufferHeight) return;
+      if (state.w === rect.width && state.h === rect.height && state.dpr === dpr && state.bufferHeight === bufferHeight) {
+        if (quietMoved) paint(state);
+        return;
+      }
       state.w = rect.width;
       state.h = rect.height;
       state.dpr = dpr;
@@ -235,7 +254,9 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
       else paint(state);
     } catch (error) { artworkFailed(state, error); }
   };
-  new ResizeObserver(resize).observe(canvas.parentElement);
+  const resized = new ResizeObserver(resize);
+  resized.observe(canvas.parentElement);
+  if (copy) resized.observe(copy);
   if (state.kind === 'journal-water') addEventListener('resize', resize);
   new IntersectionObserver(entries => {
     state.visible = entries[0].isIntersecting;
@@ -246,7 +267,8 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
   }).observe(state.kind === 'journal-water' ? state.host : canvas);
   canvasStates.push(state);
   resize();
-  if (state.kind === 'wave' || state.kind === 'journal-water') prepareArtwork(state);
+  // Artwork at the head of a page is on screen from the start, so it is prepared at once.
+  if (['wave', 'journal-water', 'chart', 'strands'].includes(state.kind)) prepareArtwork(state);
   else {
     const nearby = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting) return;
