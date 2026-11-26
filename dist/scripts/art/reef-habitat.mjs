@@ -1,6 +1,6 @@
-import { ORGANIC_CORALS } from './reef-organic.mjs?v=1fbc42b90f09';
-import { reefFloorHeight } from './reef-terrain.mjs?v=1fbc42b90f09';
-export { reefFloorHeight } from './reef-terrain.mjs?v=1fbc42b90f09';
+import { ORGANIC_CORALS, buildCorals } from './reef-organic.mjs?v=c06c618d0a3f';
+import { reefFloorHeight } from './reef-terrain.mjs?v=c06c618d0a3f';
+export { reefFloorHeight } from './reef-terrain.mjs?v=c06c618d0a3f';
 
 const random = seed => { const n = Math.sin(seed * 91.73 + 17.19) * 41738.31; return n - Math.floor(n); };
 
@@ -37,6 +37,7 @@ function clearsSwimmingCorridors(x,y,envelope,height,compact) {
 
 /** Seeded clusters are packed by their actual mesh envelopes, not a row/grid. */
 export function reefHabitat(compact = false) {
+  buildCorals();
   const colonies = [], distance = compact ? 1500 : 2800;
   const depthScale = compact ? .52 : 1, halfWidth = compact ? 337 : 1120;
   const groups = [

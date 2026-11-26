@@ -136,7 +136,7 @@ if (root) {
 
   // Reuse the website's record geometry in one small, static grouping.
   const recordGrains = root.querySelector('.yf-record-grains');
-  import('./art/inspection-objects.mjs?v=1fbc42b90f09').then(({drawInspectionObject}) => {
+  import('./art/inspection-objects.mjs?v=c06c618d0a3f').then(({drawInspectionObject}) => {
     const context = recordGrains.getContext('2d');
     if (!context) { recordGrains.remove(); return; }
     const dpr = Math.min(2, window.devicePixelRatio || 1);

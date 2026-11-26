@@ -642,34 +642,63 @@ function seaweedRibbons(seed) {
   return finish(m);
 }
 
-export const ORGANIC_CORALS = {
-  staghorn: staghorn(11),
-  staghorn_spreading: staghorn(29),
-  staghorn_tangled: staghorn(47),
-  brain_lobes: brainLobes(7),
-  brain_ridged: brainLobes(19, true),
-  shelf_coral: shelfCoral(3),
-  cauliflower: cauliflower(23),
-  cauliflower_small: cauliflower(23, 4),
-  coral_bush: coralBush(61),
-  coral_bush_broad: coralBush(103),
-  lace_fan: laceFan(13),
-  branching_compact: compactBranches(83),
-  branching_compact_2: compactBranches(191),
-  branching_compact_3: compactBranches(227),
-  branching_spreading: compactBranches(137, true),
-  massive_coral: roundedColony(31),
-  massive_coral_2: roundedColony(157),
-  massive_lobed: roundedColony(71, 'lobed'),
-  massive_lobed_2: roundedColony(193, 'lobed'),
-  encrusting_coral: roundedColony(109, 'encrusting'),
-  young_lobed: roundedColony(239, 'lobed', 3),
-  young_encrusting: roundedColony(263, 'encrusting', 3),
-  young_fingers: youngColony(281),
-  young_fingers_2: youngColony(313),
-  foliose_coral: folioseColony(43),
-  soft_tuft: softTuft(89),
-  soft_tuft_open: softTuft(149, true),
-  seaweed_ribbons: seaweedRibbons(59),
-  seaweed_ribbons_open: seaweedRibbons(131),
+// The corals are built one after another, in this order. All of them at once take long enough (about
+// 55 ms on a fast machine, several times that on a slow one) to make a running animation stutter, so
+// a page builds them a few milliseconds at a time with `buildCoralsGently`, giving the browser a turn
+// in between. `buildCorals` finishes whatever is left at once: it is what runs outside a page (the
+// tests, the export of the still), and the reef calls it before it reads a coral, so nothing depends
+// on the gentle build having been asked for or having finished.
+const RECIPES = {
+  staghorn: () => staghorn(11),
+  staghorn_spreading: () => staghorn(29),
+  staghorn_tangled: () => staghorn(47),
+  brain_lobes: () => brainLobes(7),
+  brain_ridged: () => brainLobes(19, true),
+  shelf_coral: () => shelfCoral(3),
+  cauliflower: () => cauliflower(23),
+  cauliflower_small: () => cauliflower(23, 4),
+  coral_bush: () => coralBush(61),
+  coral_bush_broad: () => coralBush(103),
+  lace_fan: () => laceFan(13),
+  branching_compact: () => compactBranches(83),
+  branching_compact_2: () => compactBranches(191),
+  branching_compact_3: () => compactBranches(227),
+  branching_spreading: () => compactBranches(137, true),
+  massive_coral: () => roundedColony(31),
+  massive_coral_2: () => roundedColony(157),
+  massive_lobed: () => roundedColony(71, 'lobed'),
+  massive_lobed_2: () => roundedColony(193, 'lobed'),
+  encrusting_coral: () => roundedColony(109, 'encrusting'),
+  young_lobed: () => roundedColony(239, 'lobed', 3),
+  young_encrusting: () => roundedColony(263, 'encrusting', 3),
+  young_fingers: () => youngColony(281),
+  young_fingers_2: () => youngColony(313),
+  foliose_coral: () => folioseColony(43),
+  soft_tuft: () => softTuft(89),
+  soft_tuft_open: () => softTuft(149, true),
+  seaweed_ribbons: () => seaweedRibbons(59),
+  seaweed_ribbons_open: () => seaweedRibbons(131),
 };
+export const ORGANIC_CORALS = {};
+const pending = Object.entries(RECIPES);
+const buildNext = () => { const [kind, build] = pending.shift(); ORGANIC_CORALS[kind] = build(); };
+
+/** Builds every coral not yet built, at once. Does nothing when they all are. */
+export function buildCorals() { while (pending.length) buildNext(); }
+
+let gently;
+/** Builds the corals a few milliseconds at a time, giving the page a turn between. Resolves when all are built. */
+export function buildCoralsGently() {
+  return gently ||= (async () => {
+    const turn = typeof MessageChannel === 'function'
+      ? () => new Promise(resolve => { const { port1, port2 } = new MessageChannel(); port1.onmessage = () => { port1.close(); resolve(); }; port2.postMessage(null); })
+      : () => new Promise(resolve => setTimeout(resolve, 0));
+    let since = performance.now();
+    while (pending.length) {
+      buildNext();
+      if (pending.length && performance.now() - since > 4) { await turn(); since = performance.now(); }
+    }
+  })();
+}
+
+if (typeof document === 'undefined') buildCorals();

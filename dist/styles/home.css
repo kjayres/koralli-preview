@@ -236,6 +236,15 @@
   .home-page .building-enhanced .depth-panel h3 { margin-top:4px; font-size:18px; line-height:1.2; }
   .home-page .building-enhanced .building-caption { margin:6px 0 0; font-size:11px; line-height:1.35; max-width:none; }
 }
+/* A small phone held sideways: stacked, the drawing was left a thin strip under the text. Side by
+   side, as on wider screens, it has the whole height of the scene. */
+@media (max-width:759px) and (min-width:540px) and (orientation:landscape) and (max-height:500px) and (prefers-reduced-motion:no-preference) {
+  .home-page .building-enhanced .building-heading { margin-left:0; margin-right:0; }
+  .home-page .building-enhanced .building-layout { flex-direction:row; align-items:center; gap:18px; }
+  .home-page .building-enhanced .building-art { order:0; flex:1 1 0; align-self:stretch; }
+  .home-page .building-enhanced .building-copy { order:1; flex:0 0 54%; padding:0; }
+  .home-page .building-enhanced .company-building { max-height:100%; }
+}
 /* A phone held sideways, or any short and wide window: the panel beside the building is taller
    than the room the scene has for it, and rose into the heading. Its lines are set a size smaller
    and the three layers share one row, each with its mark beside its numeral and its name beneath,
