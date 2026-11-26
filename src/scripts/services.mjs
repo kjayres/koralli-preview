@@ -71,10 +71,16 @@ export function initServices() {
     let entered = entries.some(entry => entry.isIntersecting);
     if (!primed) {
       primed = true;
-      // Cards are only ever hidden while still below the fold. On a deep link, or when the page
-      // opens further down, they are already on screen or behind the reader and simply stay.
-      if (list.getBoundingClientRect().top < innerHeight) entered = true;
-      else if (!motion.matches && !shown) section.classList.add('services-reveal');
+      // Below the fold the cards wait out of sight. If the page opens with them already on screen,
+      // by a link to this section or a reload, they fade in at once all the same. Only cards the
+      // reader has already passed are left as they are.
+      const bounds = list.getBoundingClientRect(), passed = bounds.bottom <= 0;
+      if (bounds.top < innerHeight) entered = true;
+      if (!passed && !motion.matches && !shown) {
+        section.classList.add('services-reveal');
+        // Let the hidden state apply before the arrival, so the fade is seen and not skipped.
+        void section.offsetWidth;
+      }
     }
     if (!entered) return;
     observer.disconnect();

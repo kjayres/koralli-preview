@@ -380,7 +380,7 @@ test('cards are hidden only while the script is waiting to reveal them, and arri
   assert.match(css, /\.services-reveal\.services-shown \.service \{[^}]*opacity:1[^}]*transition:/);
   const delays = [...css.matchAll(/\.services-reveal\.services-shown \.service:nth-child\((\d)\) \{ transition-delay:\.(\d+)s; \}/g)].map(m => [Number(m[1]), Number(`.${m[2]}`)]);
   assert.deepEqual(delays.map(([card]) => card), [2, 3]);
-  assert.ok(delays[0][1] > 0 && delays[0][1] < delays[1][1] && delays[1][1] <= .3, 'The stagger is short');
+  assert.ok(delays[0][1] >= .15 && delays[0][1] < delays[1][1] && delays[1][1] <= .5, 'The cards arrive one after another, in under a second and a half');
   assert.match(css, /prefers-reduced-motion:reduce\) \{\s*\.services-reveal \.service \{[^}]*opacity:1[^}]*transition:none/);
   // Without the script, or before it runs, nothing hides the offerings.
   for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
@@ -395,7 +395,7 @@ async function controller({ width = 1200, height = 800, reduced = false, cardTop
   const top = () => cardTop - context.scrollY;
   const svgs = [0, 1, 2].map(() => ({ set innerHTML(v) { renders++; } }));
   const cards = svgs.map(svg => ({ querySelector: () => svg, getBoundingClientRect: () => ({ top: top(), bottom: top() + 400 }) }));
-  const stage = { name: 'stage' }, list = { name: 'list', getBoundingClientRect: () => ({ top: top() - 20 }) };
+  const stage = { name: 'stage' }, list = { name: 'list', getBoundingClientRect: () => ({ top: top() - 20, bottom: top() + 420 }) };
   const section = { id: 'services', classList, querySelector: selector => ({ '[data-services-stage]': stage, '.service-list': list })[selector], querySelectorAll: () => cards };
   const motion = { matches: reduced, addEventListener: (name, fn) => events.set('motion', fn) };
   const document = { hidden: false, querySelector: selector => selector === '[data-services]' ? section : null, addEventListener: (name, fn) => events.set(name, fn) };
@@ -443,14 +443,22 @@ test('the cards wait, then arrive together once as the section comes into view',
   assert.equal(view.moved, 0, 'Scrolling is never held or redirected');
 });
 
-test('cards already on screen or behind the reader when the page opens are never hidden', async () => {
-  for (const scrollY of [1500, 1800, 4000]) {
+test('cards on screen when the page opens fade in at once; cards already passed are left alone', async () => {
+  for (const scrollY of [1500, 1800]) {
     const view = await controller();
     view.context.scrollY = scrollY;
     view.report(scrollY === 1800);
-    assert.ok(!view.classes.has('services-reveal'), 'A deep link must not blink the offerings out and in');
-    assert.ok(view.classes.has('services-shown') && view.watching(view.list).gone);
+    assert.ok(view.classes.has('services-reveal') && view.classes.has('services-shown'), 'A link straight to the offerings still shows them arriving');
+    assert.ok(view.watching(view.list).gone);
   }
+  const passed = await controller();
+  passed.context.scrollY = 4000;
+  passed.report(false);
+  assert.ok(!passed.classes.has('services-reveal') && passed.classes.has('services-shown'), 'Nothing behind the reader is hidden');
+  const still = await controller({ reduced: true });
+  still.context.scrollY = 1800;
+  still.report(true);
+  assert.ok(!still.classes.has('services-reveal') && still.classes.has('services-shown'));
 });
 
 test('unrevealed, offscreen and hidden artwork does no drawing', async () => {
