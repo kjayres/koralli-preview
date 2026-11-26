@@ -13,6 +13,10 @@ const during = (time, [start, end]) => smooth((time - start) / (end - start));
 const p = makeProjector({ originX: 280, originY: 212, centerX: 100, centerY: 83, angle: -14, scale: 2.05, pitch: .43 });
 const iso = isoPrimitives(p);
 const SPLIT = '<!--service-hands-->';
+// Hard hats take the one warm accent the homepage cards already use, for the welder's sparks.
+const HAT = '#FFD166';
+// Carrying or hanging, the robot's elbows point down and a little back, close to its body.
+const tucked = (side, { right, forward }) => [right[0] * side * .25 - forward[0] * .25, right[1] * side * .25 - forward[1] * .25, -1];
 
 /** One loop, in sixteenths of a second, and the moment that stands for the scene when it is still. */
 export const FLOW_STEPS = 256, FLOW_STILL = .56;
@@ -272,6 +276,36 @@ function drip(time) {
   return out;
 }
 
+// A hard hat: a brim with a peak to the front, a dome over it and a ridge from front to back.
+// `size` is half its width, half its depth and its height; `heading` is the way its wearer faces.
+function hardHat(centre, [across, deep, tall], heading, stroke) {
+  const forward = [Math.sin(heading), Math.cos(heading)], right = [Math.cos(heading), -Math.sin(heading)];
+  const at = (u, v, h) => p(centre[0] + right[0] * u + forward[0] * v, centre[1] + right[1] * u + forward[1] * v, centre[2] + h);
+  const brim = Array.from({ length: 20 }, (_, i) => {
+    const angle = i * TAU / 20, reach = 1.12 + .36 * Math.max(0, Math.sin(angle)) ** 2;
+    return at(Math.cos(angle) * across * reach, Math.sin(angle) * deep * reach, 0);
+  });
+  const dome = [0, 22, 45, 68, 86].flatMap(degrees => {
+    const rise = degrees * Math.PI / 180;
+    return Array.from({ length: 16 }, (_, i) => at(Math.cos(i * TAU / 16) * across * Math.cos(rise), Math.sin(i * TAU / 16) * deep * Math.cos(rise), tall * Math.sin(rise)));
+  });
+  const ridge = Array.from({ length: 9 }, (_, i) => { const a = (.14 + .72 * i / 8) * Math.PI; return at(0, Math.cos(a) * deep, Math.sin(a) * tall).join(','); });
+  const line = `stroke="${stroke}" stroke-width=".9"`;
+  return iso.polygon(brim, HAT, line) + iso.polygon(hull(dome), HAT, line)
+    + `<path d="M${ridge.join(' L')}" fill="none" stroke="${stroke}" stroke-width=".6" stroke-opacity=".75"/>`;
+}
+// A person's head is a sphere of radius 3.35 above the shoulders; the hat sits over its upper half.
+function personHat(figure, lean) {
+  const size = 3.35 * figure.scale, head = local(figure, 0, lean * 1.05 + .2, 40.8);
+  return hardHat([head[0], head[1], head[2] + size * .3], [size * 1.13, size * 1.13, size], figure.heading, CORAL);
+}
+// The robot's sits on its flat head, with the antenna's tip showing through the crown.
+function robotHat(figure, y) {
+  const s = figure.scale, [cx, cy] = p(figure.x, y, 46.7 * s);
+  return hardHat([figure.x, y, 42.3 * s], [5 * s, 4 * s, 3.5 * s], figure.heading, BLUE)
+    + `<circle cx="${cx}" cy="${cy}" r="${(1.45 * s).toFixed(2)}" fill="${GLASS}" stroke="${BLUE}" stroke-width=".95"/>`;
+}
+
 function lever(angle) {
   const tip = leverPoint(angle, LEVER), foot = leverPoint(angle, -.4);
   const [px, py] = p(...PIVOT), [tx, ty] = p(...tip);
@@ -300,13 +334,13 @@ export function flowMarkup(phase) {
   const person = human3DMarkup(p, { ...operator, lean: pose.operatorLean, leftTarget: pose.operatorNear, rightTarget: pose.operatorFar, held: SPLIT });
   const [personBack, personFront] = person.split(SPLIT).map((part, i) => i ? '<g>' + part : part + '</g>');
   const [robotBack, robotFront] = robotMarkup(p, { x: robot.x, y: pose.robotY, scale: robot.scale, heading: robot.heading,
-    stride: pose.robotStride, leftTarget: pose.robotLeft, rightTarget: pose.robotRight, held: SPLIT }).split(SPLIT);
+    stride: pose.robotStride, leftTarget: pose.robotLeft, rightTarget: pose.robotRight, held: SPLIT, elbow: tucked }).split(SPLIT);
 
   let s = iso.box(20, 30, 165, 106, 2, PAPER, PAPER, SHADE, -2, 'stroke-opacity=".5"');
   for (const x of [STUB - 6, JOIN + 8, RISER - 7]) s += post(x);
   // Arms that are not holding the section hang behind the run, so the pipe passes in front of them.
   const armsBehind = pose.robotHold < .97;
-  s += personBack + robotBack + (armsBehind ? robotFront : '');
+  s += personBack + robotBack + robotHat(robot, pose.robotY) + (armsBehind ? robotFront : '');
   // The pipes first, then the water inside them, then the flanges and bends that sit around both.
   s += tube([VALVE, Y, 0], [VALVE, Y, 1.2], R + 1.3) + tube([VALVE, Y, 1.2], [VALVE, Y, Z]);
   s += tube([VALVE, Y, Z], [STUB, Y, Z], R, { bore: true });
@@ -316,7 +350,7 @@ export function flowMarkup(phase) {
   s += tube([STUB - 1.5, Y, Z], [STUB, Y, Z], R + 1.3, { bore: pose.fittedOpacity < 1 }) + flange(VALVE + 4.6, 1.3);
   s += ball([VALVE, Y, Z], R * 1.6) + tube([VALVE, Y, Z + 3.9], [VALVE, Y, Z + 4.9], 2.1);
   s += drip(time);
-  s += lever(pose.lever) + personFront;
+  s += lever(pose.lever) + personFront + personHat(operator, pose.operatorLean);
   s += section([SECTION.x, Y, Z], pose.fittedOpacity, 'flanges');
   s += section(pose.section, pose.carriedOpacity, 'pipe') + section(pose.section, pose.carriedOpacity, 'flanges');
   s += armsBehind ? '' : robotFront;
@@ -326,6 +360,6 @@ export function flowMarkup(phase) {
   s += tube([RISER, Y, TOP], [ELBOW, Y, TOP]) + tube([ELBOW, Y, SPOUT], [ELBOW, Y, TOP]);
   s += water(pose, time, AT_RISER, LENGTH);
   s += tube([ELBOW, Y, SPOUT], [ELBOW, Y, SPOUT + 1.2], R + .9) + ball([RISER, Y, TOP], R * 1.24) + ball([ELBOW, Y, TOP], R * 1.24);
-  s += human3DMarkup(p, { ...planner, leftTarget: pose.planNear, rightTarget: pose.planFar, held: plan() });
+  s += human3DMarkup(p, { ...planner, leftTarget: pose.planNear, rightTarget: pose.planFar, held: plan() }) + personHat(planner, planner.lean);
   return s;
 }
