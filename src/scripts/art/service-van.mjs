@@ -3,6 +3,7 @@
 // springs, the load hops and the top crate slips, and the rider holding it eases it back into line.
 // Everything is derived from the phase, so any moment can be drawn again exactly.
 import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs';
+import { tuckedElbows } from './service-figures.mjs';
 
 const TAU = Math.PI * 2;
 const clamp = (n, low = 0, high = 1) => Math.max(low, Math.min(high, n));
@@ -228,7 +229,7 @@ export function vanMarkup(phase) {
   helm += body.polygon(rim, 'none', 'stroke-width="1.3"');
   for (const hand of pose.driver.hands) helm += body.planLine([[HELM.x, HELM.y, HELM.z], hand], 'stroke-width=".8"');
   const [leftHand, rightHand] = pose.driver.hands;
-  s += robotMarkup(van, { ...DRIVER, leftTarget: leftHand, rightTarget: rightHand, footTargets: pose.driver.feet, held: helm });
+  s += robotMarkup(van, { ...DRIVER, leftTarget: leftHand, rightTarget: rightHand, footTargets: pose.driver.feet, held: helm, elbow: tuckedElbows });
 
   // The roof, windscreen and bonnet close over everything inside, and the driver's legs go under the bonnet.
   s += face([[VAN.rear, VAN.far, VAN.roof], [VAN.screenTop, VAN.far, VAN.roof], [VAN.screenTop, VAN.near, VAN.roof], [VAN.rear, VAN.near, VAN.roof]], GLASS, 'fill-opacity=".08" stroke-opacity=".5"');

@@ -1,4 +1,5 @@
 import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, BLUE, CORAL } from './thesis-cards.mjs';
+import { tuckedElbows } from './service-figures.mjs';
 
 const TAU = Math.PI * 2;
 const clamp = n => Math.max(0, Math.min(1, n));
@@ -177,7 +178,7 @@ export function courseMarkup(phase) {
   s += iso.planLine([[192, 61, 8], [192, 61, 43]], 'stroke-width="1.3"');
   s += iso.panelX(192, 61, 34, 10, 8, CORAL, 'stroke="none"');
   for (const actor of courseActors(phase)) {
-    s += `<g opacity="${actor.opacity.toFixed(3)}">` + robotMarkup(p, { ...actor, leftTarget: actor.left, rightTarget: actor.right, footTargets: actor.feet }) + '</g>';
+    s += `<g opacity="${actor.opacity.toFixed(3)}">` + robotMarkup(p, { ...actor, leftTarget: actor.left, rightTarget: actor.right, footTargets: actor.feet, elbow: tuckedElbows }) + '</g>';
   }
   for (const x of [42, 104]) s += iso.box(x - 1.6, 86, 3.2, 3.2, BAR + 1.6, PAPER, PAPER, SHADE, 0, `stroke="${BLUE}" stroke-width=".7"`);
   s += iso.planLine([[42, 87.6, BAR], [104, 87.6, BAR]], `stroke="${BLUE}" stroke-width="3"`);

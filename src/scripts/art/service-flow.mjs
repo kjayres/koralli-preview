@@ -1,4 +1,5 @@
 import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE, CORAL } from './thesis-cards.mjs';
+import { tuckedElbows } from './service-figures.mjs';
 
 // Redesign workflows for people and agents: the work-flow as real pipework. A planner points out
 // the gap, the robot fits the missing section, a person throws the valve lever, and the flow runs
@@ -16,8 +17,6 @@ const SPLIT = '<!--service-hands-->';
 // Hard hats take the one warm accent the homepage cards already use, for the welder's sparks,
 // with a deeper tone for the brim and the side of the shell turned away from the light.
 const HAT = '#FFD166', HAT_SHADE = '#EDB44A';
-// Carrying or hanging, the robot's elbows point down and a little back, close to its body.
-const tucked = (side, { right, forward }) => [right[0] * side * .25 - forward[0] * .25, right[1] * side * .25 - forward[1] * .25, -1];
 
 /** One loop, in sixteenths of a second, and the moment that stands for the scene when it is still. */
 export const FLOW_STEPS = 256, FLOW_STILL = .56;
@@ -349,7 +348,7 @@ export function flowMarkup(phase) {
   const person = human3DMarkup(p, { ...operator, lean: pose.operatorLean, leftTarget: pose.operatorNear, rightTarget: pose.operatorFar, held: SPLIT });
   const [personBack, personFront] = person.split(SPLIT).map((part, i) => i ? '<g>' + part : part + '</g>');
   const [robotBack, robotFront] = robotMarkup(p, { x: robot.x, y: pose.robotY, scale: robot.scale, heading: robot.heading,
-    stride: pose.robotStride, leftTarget: pose.robotLeft, rightTarget: pose.robotRight, held: SPLIT, elbow: tucked }).split(SPLIT);
+    stride: pose.robotStride, leftTarget: pose.robotLeft, rightTarget: pose.robotRight, held: SPLIT, elbow: tuckedElbows }).split(SPLIT);
 
   let s = iso.box(20, 30, 165, 106, 2, PAPER, PAPER, SHADE, -2, 'stroke-opacity=".5"');
   for (const x of [STUB - 6, JOIN + 8, RISER - 7]) s += post(x);
