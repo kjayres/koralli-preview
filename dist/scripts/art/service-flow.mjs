@@ -1,5 +1,5 @@
-import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE, CORAL } from './thesis-cards.mjs?v=a4b692340dda';
-import { tuckedElbows } from './service-figures.mjs?v=a4b692340dda';
+import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE, CORAL } from './thesis-cards.mjs?v=1fbc42b90f09';
+import { tuckedElbows } from './service-figures.mjs?v=1fbc42b90f09';
 
 // Redesign workflows for people and agents: the work-flow as real pipework. A planner points out
 // the gap, the robot fits the missing section, a person throws the valve lever, and the flow runs

@@ -5,7 +5,8 @@
   --rope:#8e9ac0;
   --rope-shade:#68749c;
   --rope-w:3px;
-  --rope-x:max(16px,calc(max(var(--gutter),(100vw - 1276px) / 2) / 2));
+  /* Never nearer the edge than half the link that hangs on it, or the link would overhang the page. */
+  --rope-x:max(calc(var(--link-w) / 2),calc(max(var(--gutter),(100vw - 1276px) / 2) / 2));
   --link-w:44px;
   --link-h:54px;
   --anchor-gap:40px;

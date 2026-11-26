@@ -5,8 +5,8 @@
 // in the same projection, in a pilot's seat, facing the way the craft is going, both hands on the yoke.
 // It says where we are: not on the reef any more, but down where things have to be gone and looked at.
 // The drawing is built as the cards build theirs, then painted to the canvas; all of it follows from time.
-import { makeProjector, isoPrimitives, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=a4b692340dda';
-import { tuckedElbows } from './service-figures.mjs?v=a4b692340dda';
+import { makeProjector, isoPrimitives, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=1fbc42b90f09';
+import { tuckedElbows } from './service-figures.mjs?v=1fbc42b90f09';
 
 const TAU = Math.PI * 2;
 const clamp = (value, low = 0, high = 1) => Math.max(low, Math.min(high, value));

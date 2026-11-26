@@ -2,8 +2,8 @@
 // view while it is moving. Once a loop a near wheel meets a stone: the van rides over it on its
 // springs, the load hops and the top crate slips, and the rider holding it eases it back into line.
 // Everything is derived from the phase, so any moment can be drawn again exactly.
-import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=a4b692340dda';
-import { tuckedElbows } from './service-figures.mjs?v=a4b692340dda';
+import { makeProjector, isoPrimitives, human3DMarkup, robotMarkup, PAPER, SHADE, GLASS, BLUE } from './thesis-cards.mjs?v=1fbc42b90f09';
+import { tuckedElbows } from './service-figures.mjs?v=1fbc42b90f09';
 
 const TAU = Math.PI * 2;
 const clamp = (n, low = 0, high = 1) => Math.max(low, Math.min(high, n));
