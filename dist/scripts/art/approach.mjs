@@ -1,7 +1,7 @@
-import { createParticleField, resizeParticleField, advanceParticleField, researchBounds, researchTargets, RESEARCH_FORM_COUNT } from './research.mjs?v=6d2495e014c2';
-import { coralStudies } from './coral.mjs?v=6d2495e014c2';
-import { drawInspectionObject } from './inspection-objects.mjs?v=6d2495e014c2';
-import { createAdaptGrow, adaptGrowPresentation, drawAdaptGrow, heapPull } from './adapt-grow.mjs?v=6d2495e014c2';
+import { createParticleField, resizeParticleField, advanceParticleField, researchBounds, researchTargets, RESEARCH_FORM_COUNT } from './research.mjs?v=0b54559b110a';
+import { coralStudies } from './coral.mjs?v=0b54559b110a';
+import { drawInspectionObject } from './inspection-objects.mjs?v=0b54559b110a';
+import { createAdaptGrow, adaptGrowPresentation, drawAdaptGrow, heapPull, HEAP_TINT, ROOT_SETTLE } from './adapt-grow.mjs?v=0b54559b110a';
 
 const TAU = Math.PI * 2;
 const clamp = (n, low = 0, high = 1) => Math.max(low, Math.min(high, n));
@@ -236,7 +236,7 @@ export function updateApproachScene(scene, width, height, seconds, { phase = 0, 
     scene.growEntry ||= copyPoints(particles);
     scene.growTravel ||= copyPoints(particles);
     // The root follows the actual mound, never an airborne grain or a substitute drawn point.
-    if (scene.age > 2.5) scene.growTargets[scene.grow.root] = heapRoot(scene);
+    if (scene.age > ROOT_SETTLE) scene.growTargets[scene.grow.root] = heapRoot(scene);
     if (!scene.heapRest && scene.age > 4.5 && [...rock.keys()].every(id => particles[id].asleep)) {
       scene.heapRest = scene.growTargets.map((target, id) => rock.has(id) ? { x: particles[id].x, y: particles[id].y } : target);
     }
@@ -431,12 +431,18 @@ export function drawApproach(ctx, width, height, seconds, options = {}) {
   let scene = states.get(ctx);
   if (!scene) { scene = createApproachScene(width, height); states.set(ctx, scene); }
   updateApproachScene(scene, width, height, seconds, options);
-  const rgb = [36, 78, 255].map((v, i) => Math.round(v + ([112, 119, 131][i] - v) * scene.grey));
-  ctx.save(); ctx.fillStyle = `rgb(${rgb.join(',')})`;
+  const tone = to => `rgb(${[36, 78, 255].map((v, i) => Math.round(v + (to[i] - v) * scene.grey)).join(',')})`;
+  // Grains in the water turn grey; the heap keeps a soft blue, as what was built.
+  const water = tone([112, 119, 131]), heap = tone(HEAP_TINT);
+  let style = water;
+  ctx.save(); ctx.fillStyle = style;
   for (const p of scene.field.particles) {
     const appeared = scene.reducedMotion ? 1 : smooth((scene.elapsed - random(p.id + 19) * 1.1) / .4);
     // The settled mound remains a little darker than the grains suspended above it.
-    const alpha = scene.grow.rock.has(p.id) ? scene.opacity + (.48 - scene.opacity) * scene.rock : scene.opacity;
+    const rock = scene.grow.rock.has(p.id);
+    const alpha = rock ? scene.opacity + (.48 - scene.opacity) * scene.rock : scene.opacity;
+    const next = rock ? heap : water;
+    if (next !== style) ctx.fillStyle = style = next;
     ctx.globalAlpha = alpha * appeared;
     const point = project(scene, p);
     dot(ctx, point.x, point.y, p.radius * scene.field.bounds.grainSize);
