@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { servicePose, serviceSceneMarkup, SERVICE_STEPS, SERVICE_STILL } from '../src/scripts/art/service-scenes.mjs';
 import { coursePose, courseActors, courseMarkup, courseWatchers, JUMP, WATCHERS } from '../src/scripts/art/service-course.mjs';
+import { flowPose, flowMarkup, FLOW_CAST, FLOW_STEPS, FLOW_STILL } from '../src/scripts/art/service-flow.mjs';
 import { vanPose, vanMarkup, upright, VAN, STONE, STACK, RIDER, CATCHER, DRIVER, HELM, HIT, SPEED, TURNS, MARKS, VAN_STEPS, VAN_STILL } from '../src/scripts/art/service-van.mjs';
 
 const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
@@ -272,17 +273,72 @@ test('hands stay planted and within reach while the riders sway, and the driver 
   assert.ok(distance([x + thrown.tilt * height, y, VAN.floor + height * (1 - thrown.squash)], thrown.rider.grip) < 1e-9);
 });
 
-test('the agent module meets the board and its human grips stay reachable', () => {
-  for (let i = 0; i < 300; i++) {
-    const { chip } = servicePose(0, i / 300);
-    assert.ok(chip[2] >= 24);
-    for (const side of [-1, 1]) {
-      const shoulder = [93 + side * 4.25 * 1.03, 59 + .8 * .92 * 1.03, 33.5 * 1.03];
-      const hand = [chip[0] + side * 4, chip[1], chip[2] + 3];
-      assert.ok(Math.hypot(...hand.map((v, k) => v - shoulder[k])) <= 15.36 * 1.03);
+test('the pipework is made whole before the valve opens, and water only arrives by travelling the pipe', () => {
+  const frames = Array.from({ length: 2048 }, (_, i) => flowPose(i / 2048));
+  const furthest = Math.max(...frames.map(pose => pose.front)), valve = Math.min(...frames.map(pose => pose.front));
+  assert.ok(furthest - valve > 80, 'The run is long enough for the journey to be seen');
+  let opened = 0, poured = 0, rising = 0;
+  frames.forEach((pose, i) => {
+    const next = frames[(i + 1) % frames.length];
+    assert.ok(pose.open >= 0 && pose.open <= 1 && pose.lever >= 0);
+    if (pose.open > 0) {
+      opened++;
+      assert.equal(pose.fittedOpacity, 1, 'The valve is never opened onto a gap');
+      assert.ok(pose.robotHold < .05, 'The robot has let go and stepped clear before the lever moves');
     }
+    assert.ok(pose.front >= pose.tail - 1e-9, 'Water in the pipe lies between its tail and its front');
+    if (pose.pouring) {
+      poured++;
+      assert.ok(Math.abs(pose.front - furthest) < 1e-9, 'Nothing pours until the water has reached the spout');
+      if (next.pouring) { assert.ok(next.level >= pose.level); rising++; }
+    } else if (!next.pouring) assert.ok(next.level <= pose.level + 1e-9, 'With nothing pouring the tank drains');
+    assert.ok(pose.level > 0 && pose.level < 31, 'The level stays inside the tank');
+    // A section is always either in the robot's hands or in the pipe, never missing mid-frame.
+    assert.ok(pose.carriedOpacity + pose.fittedOpacity >= 1 - 1e-9 || pose.open === 0);
+  });
+  assert.ok(opened > 600 && poured > 400 && rising > 400, 'The flow is on for a good part of the loop');
+  const still = flowPose(FLOW_STILL);
+  assert.ok(still.open === 1 && still.pouring === 1, 'The still moment shows the rebuilt run working');
+  assert.equal(flowMarkup(0), flowMarkup(1));
+  assert.ok(Number.isInteger(FLOW_STEPS));
+});
+
+test('hands stay on the lever, the section and the plan, and within reach', () => {
+  const { robot, operator, planner } = FLOW_CAST;
+  const onPlan = flowPose(FLOW_STILL).planNear;
+  let pivot = null, held = 0, pointing = 0;
+  for (let i = 0; i < 2000; i++) {
+    const pose = flowPose(i / 2000);
+    // Operator: two grips a fixed distance apart on a rigid lever that turns about one pivot.
+    const along = pose.operatorNear.map((v, k) => v - pose.operatorFar[k]), gap = Math.hypot(...along);
+    assert.ok(Math.abs(gap - 2.6) < 1e-9);
+    const foot = pose.operatorFar.map((v, k) => v - along[k] / gap * 10);
+    pivot ??= foot;
+    assert.ok(distance(foot, pivot) < 1e-9, 'The lever turns about its pivot; it never slides');
+    assert.ok(Math.abs(Math.atan2(-along[0], along[2]) - pose.lever) < 1e-9, 'The hands are where the lever is');
+    [pose.operatorNear, pose.operatorFar].forEach((hand, j) => {
+      assert.ok(distance(hand, humanShoulder(operator, j ? 1 : -1, pose.operatorLean)) < 15.36 * operator.scale);
+    });
+    // Planner: the far hand never leaves the plan; the near hand points, then returns to it.
+    assert.deepEqual(pose.planFar, flowPose(0).planFar);
+    [pose.planNear, pose.planFar].forEach((hand, j) => {
+      assert.ok(distance(hand, humanShoulder(planner, j ? 1 : -1, planner.lean)) < 15.36 * planner.scale);
+    });
+    if (distance(pose.planNear, onPlan) > 3) pointing++;
+    // Robot: while it holds the section its grippers are a fixed span apart on it, level with it.
+    assert.ok(pose.robotY >= robot.far - 1e-9 && pose.robotY <= robot.near + 1e-9);
+    [pose.robotLeft, pose.robotRight].forEach((hand, j) => {
+      const side = j ? 1 : -1, shoulder = [robot.x + side * 6.4 * robot.scale, pose.robotY + .2 * robot.scale, 31.8 * robot.scale];
+      assert.ok(distance(hand, shoulder) < 21 * robot.scale);
+      if (pose.robotHold === 1) {
+        assert.ok(Math.abs(hand[0] - pose.section[0] - side * 7) < 1e-9 && Math.abs(hand[2] - pose.section[2]) < 1e-9);
+      }
+    });
+    if (pose.robotHold === 1) held++;
+    if (Math.abs(pose.robotY - robot.far) < 1e-9 || Math.abs(pose.robotY - robot.near) < 1e-9) assert.ok(Math.abs(pose.robotStride) < 1e-9, 'Standing still, the feet are together');
   }
-  assert.equal(servicePose(0, .5).chip[2], 24);
+  assert.ok(held > 300, 'The section is carried and seated in the robot\'s grip');
+  assert.ok(pointing > 150 && pointing < 1200, 'The planner points the gap out, then goes back to the plan');
 });
 
 test('frames have finite geometry, unique figure clips and balanced SVG groups', () => {
