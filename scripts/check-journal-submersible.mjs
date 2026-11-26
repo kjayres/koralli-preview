@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { drawJournalSubmersible, submersiblePose, SUBMERSIBLE } from '../src/scripts/art/journal-submersible.mjs';
+import { drawJournalSubmersible, submersiblePose, pilotMarkup, pilotPose, displayList, SUBMERSIBLE, DEEP } from '../src/scripts/art/journal-submersible.mjs';
+import { robotMarkup, makeProjector, PAPER, SHADE, GLASS, BLUE } from '../src/scripts/art/thesis-cards.mjs';
 
 function recorder({ gradients = false } = {}) {
-  const calls = { paths: [], fills: 0, strokes: 0, gradients: 0, low: Infinity, high: -Infinity, left: Infinity, right: -Infinity, alphas: [] };
+  const calls = { paths: [], fills: 0, strokes: 0, gradients: 0, low: Infinity, high: -Infinity, left: Infinity, right: -Infinity, alphas: [], colours: new Set() };
   const see = (x, y) => { assert.ok(Number.isFinite(x + y)); calls.low = Math.min(calls.low, y); calls.high = Math.max(calls.high, y); calls.left = Math.min(calls.left, x); calls.right = Math.max(calls.right, x); };
   const ctx = {
     globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1, depth: 0,
     save() { this.depth++; }, restore() { this.depth--; }, beginPath() {}, closePath() {},
     moveTo: see, lineTo: see,
     arc(x, y, radius, from, to) { assert.ok(radius > 0 && Math.abs(to - from - Math.PI * 2) < 1e-9); see(x, y - radius); see(x, y + radius); },
-    stroke() { calls.strokes++; calls.alphas.push(this.globalAlpha); }, fill() { calls.fills++; calls.alphas.push(this.globalAlpha); },
+    stroke() { calls.strokes++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.strokeStyle); }, fill() { calls.fills++; calls.alphas.push(this.globalAlpha); calls.colours.add(this.fillStyle); },
   };
   if (gradients) ctx.createLinearGradient = () => { calls.gradients++; return { addColorStop(at, colour) { assert.ok(at >= 0 && at <= 1); const alpha = Number(colour.match(/,([\d.]+)\)$/)[1]); assert.ok(alpha <= .05, 'The beam stays a faint wash'); } }; };
   return { ctx, calls };
@@ -31,8 +32,8 @@ test('the craft crosses the opening from right to left, steadily, and is in view
       assert.ok(next.x < pose.x, 'It only ever travels to the left');
       assert.ok(pose.x - next.x < 6 && Math.abs(next.y - pose.y) < 1, 'No jump while it is in the water');
       // Between the navigation and the title, which sits at the foot of the first screen.
-      assert.ok(pose.y - pose.length * .3 > 90 && pose.y + pose.length * .25 < screen * .62, `It keeps to the open water at ${width}x${screen}`);
-      assert.ok(Math.abs(pose.pitch) < .05, 'It stays level');
+      assert.ok(pose.y - pose.length * .3 > 90 && pose.y + pose.length * .25 < screen * .66, `It keeps to the open water at ${width}x${screen}`);
+      assert.ok(pose.pitch < 0 && pose.pitch > -.11, 'It holds a steady attitude, nose a touch down');
     }
     assert.ok(passes >= 3 && passes <= 4, 'One pass in each cycle');
     const leaving = submersiblePose(width, height, SUBMERSIBLE.crossing - SUBMERSIBLE.lead - .01, options);
@@ -54,11 +55,12 @@ test('everything drawn lies within its stated reach, is faint, and is skipped wh
     const { ctx, calls } = recorder({ gradients }), options = { compact, screen: 844 }, pose = submersiblePose(width, 6000, time, options);
     drawJournalSubmersible(ctx, width, 6000, time, options);
     assert.equal(ctx.depth, 0, 'The shared canvas state is restored');
-    assert.ok(calls.strokes >= 3 && calls.fills >= 5, 'Hull, outline and pilot, with lights and lit water');
+    assert.ok(calls.strokes > 120 && calls.fills > 80, 'Solid panels with clean outlines, as the service cards are drawn');
+    for (const colour of Object.values(DEEP)) assert.ok(calls.colours.has(colour), 'in the colours of deep water');
+    for (const colour of [PAPER, SHADE, GLASS, BLUE]) assert.ok(!calls.colours.has(colour), 'and none of the paper-page colours');
     assert.equal(calls.gradients > 0, gradients, 'The beam fades smoothly where the canvas can, and in steps where it cannot');
     assert.ok(calls.low >= pose.y - pose.reach && calls.high <= pose.y + pose.reach, 'Nothing is drawn outside the band it is culled by');
     assert.ok(calls.alphas.every(alpha => alpha >= 0 && alpha <= 1) && Math.max(...calls.alphas.filter(alpha => alpha < 1)) <= 1);
-    assert.ok(pose.alpha <= .45, 'As quiet as the animals around it');
     // The beam points ahead and down: the lowest and leftmost marks belong to it.
     assert.ok(calls.left < pose.x - pose.length && calls.high > pose.y + pose.length * .6);
     for (const viewport of [{ top: pose.y + pose.reach + 1, bottom: pose.y + pose.reach + 900 }, { top: 0, bottom: pose.y - pose.reach - 1 }]) {
@@ -70,4 +72,24 @@ test('everything drawn lies within its stated reach, is faint, and is skipped wh
   const empty = recorder();
   drawJournalSubmersible(empty.ctx, 1440, 6000, SUBMERSIBLE.crossing - SUBMERSIBLE.lead + 5, { screen: 900 });
   assert.equal(empty.calls.strokes + empty.calls.fills, 0, 'Between passes it draws nothing');
+});
+
+test('the pilot is the same agent as on the homepage and the cards, seated with a hand on each stick', () => {
+  // Built by the shared figure function, not a look-alike: its markup carries that figure's marks.
+  const markup = pilotMarkup(3);
+  const reference = robotMarkup(makeProjector(), { x: 0, y: 0 });
+  const signature = text => ({ screens: (text.match(/fill-opacity="\.82"/g) || []).length, visors: (text.match(/fill-opacity="\.28"/g) || []).length });
+  assert.deepEqual(signature(markup), signature(reference), 'The chest screen and the visor');
+  assert.ok((markup.match(/<circle/g) || []).length >= (reference.match(/<circle/g) || []).length, 'Every joint, the grippers and the antenna');
+  const list = displayList(markup);
+  assert.ok(list.length > 40 && list.every(item => item.circle || item.points.length >= 2));
+  assert.ok(list.every(item => ![PAPER, SHADE, GLASS, BLUE].includes(item.fill) && ![PAPER, SHADE, GLASS, BLUE].includes(item.stroke)), 'Recoloured for deep water');
+  for (let i = 0; i < 400; i++) {
+    const pose = pilotPose(i / 7), still = pilotPose(0);
+    assert.deepEqual(pose.feet, still.feet, 'It stays in its seat');
+    pose.hands.forEach((hand, j) => {
+      assert.ok(Math.hypot(...hand.map((v, k) => v - still.hands[j][k])) < 3, 'Its hands only ease the sticks about');
+      assert.ok(Math.hypot(hand[0] - pose.sticks[j][0], hand[1] - pose.sticks[j][1]) < 3 && hand[2] > pose.sticks[j][2] + 8, 'and each stays on top of its stick');
+    });
+  }
 });
