@@ -24,28 +24,18 @@ function artworkFailed(state, error) {
   state.failed = true;
   state.host.classList.remove('art-ready');
   state.host.classList.add('art-failed');
-  if (state.kind === 'reef') restoreReefStill(state);
+  if (state.kind === 'reef') showReefStill(state);
   console.error(`Unable to display ${state.kind} artwork:`, error);
 }
 
-// The reef's SVG still is a 2.6 MB placeholder that only shows until the live reef is ready.
-// The live reef is normally ready well before it scrolls into view, so a still that has not
-// started loading by then is skipped; it comes back if the reef has to re-warm or fails.
-function skipReefStill(state) {
-  const still = state.host.querySelector('.reef-still img');
-  if (!still || still.complete || still.dataset.skipped) return;
-  const sources = [...state.host.querySelectorAll('.reef-still source')];
-  still.dataset.skipped = still.getAttribute('src');
-  sources.forEach(source => { source.dataset.skipped = source.getAttribute('srcset'); source.removeAttribute('srcset'); });
-  still.removeAttribute('src');
-}
-
-function restoreReefStill(state) {
-  const still = state.host.querySelector('.reef-still img');
-  if (!still?.dataset.skipped) return;
-  state.host.querySelectorAll('.reef-still source[data-skipped]').forEach(source => { source.setAttribute('srcset', source.dataset.skipped); delete source.dataset.skipped; });
-  still.setAttribute('src', still.dataset.skipped);
-  delete still.dataset.skipped;
+// The reef's still is a picture of over two megabytes, kept for a browser without scripts and for a
+// reef that cannot be drawn. A working reef never fetches it: until the live reef is ready its place
+// is the deep blue of the section, and the reef then fades up out of that.
+function showReefStill(state) {
+  if (!state.stillMarkup || state.host.querySelector('.reef-still')) return;
+  const template = document.createElement('template');
+  template.innerHTML = state.stillMarkup;
+  state.host.insertBefore(template.content, state.canvas);
 }
 
 function updateJournalViewport() {
@@ -63,7 +53,6 @@ async function warmReefArtwork(state) {
   const isCurrent = () => revision === state.reefRevision && !state.failed && !document.hidden;
   state.reefReady = false;
   state.host.classList.remove('art-ready');
-  restoreReefStill(state);
   try {
     if (state.reef.prewarmReef) {
       if (!await state.reef.prewarmReef(state, isCurrent)) return;
@@ -71,7 +60,6 @@ async function warmReefArtwork(state) {
     if (!isCurrent()) return;
     state.reefReady = true;
     paint(state);
-    skipReefStill(state);
     schedule();
   } catch (error) { if (isCurrent()) artworkFailed(state, error); }
 }
@@ -145,7 +133,7 @@ function paint(state, dt = 0) {
         state.reef.stepReef(state);
       }
     }
-    state.host.classList.add('art-ready');
+    if (!state.host.classList.contains('art-ready')) state.host.classList.add('art-ready');
   } catch (error) { artworkFailed(state, error); }
 }
 
@@ -184,7 +172,8 @@ for (const canvas of document.querySelectorAll('canvas[data-art]')) {
   const state = { canvas, host: canvas.parentElement, kind: canvas.dataset.art, w: 0, h: 0, t: 0, time: 0, fraction: 0, visible: false };
   // Reuse the existing no-script description while artwork loads or if it fails.
   const fallback = state.host.querySelector('noscript');
-  if (fallback) {
+  if (fallback && state.kind === 'reef') state.stillMarkup = fallback.textContent;
+  else if (fallback) {
     const template = document.createElement('template');
     template.innerHTML = fallback.textContent;
     state.host.insertBefore(template.content, canvas);
@@ -539,8 +528,8 @@ document.querySelectorAll('.site-header nav a').forEach(link => {
 });
 if (tracksScroll) onScroll();
 
-// Loading the reef's code builds its meshes, a brief pause that would otherwise land mid-scroll
-// through the building. Load it in the quiet moment after the page has finished loading instead.
+// Loading the reef's code builds its coral meshes, a piece at a time. It is started in the quiet
+// moment after the page has finished loading, so the reef is ready long before it is scrolled to.
 if (document.querySelector('canvas[data-art="reef"]')) {
   addEventListener('load', () => {
     const preload = () => artworkLoaders.reef().catch(() => {});

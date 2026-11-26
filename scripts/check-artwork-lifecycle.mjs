@@ -22,7 +22,7 @@ function element() {
     clientWidth:600, clientHeight:440
   };
 }
-async function setup({kind, reduced=false, building=false, importFailure, firstFailure=false, deferredReef=false, journalLettering=false}={}) {
+async function setup({kind, reduced=false, building=false, importFailure, firstFailure=false, deferredReef=false, journalLettering=false, fallback}={}) {
   const imports=[], errors=[], observers=[], frames=new Map(), events=new Map();
   const warmups=[],resizers=[];
   let nextFrame=0, failDraw=firstFailure, calls=0, failBuilding=false, clearCalls=0, letterCalls=0, boundsReads=0;
@@ -30,6 +30,10 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
   const journalDraws=[]; let canvasTop=0, headingTop=100;
   const host=element(), canvas=element();
   canvas.dataset.art=kind; canvas.parentElement=host;
+  // A host may carry a no-script fallback; whatever the page puts in front of the canvas is recorded.
+  const inserted=[];
+  host.querySelector=s=>s==='noscript'&&fallback?{textContent:fallback}:s==='.reef-still'&&inserted.length?{}:null;
+  host.insertBefore=node=>inserted.push(node.markup);
   canvas.getContext=()=>({clearRect(){clearCalls++;},setTransform(...args){transforms.push(args);}});
   const heading=element();
   if(kind==='journal-water') {
@@ -44,7 +48,7 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
   const motion={matches:reduced,addEventListener:(n,cb)=>events.set(`motion:${n}`,cb)};
   const selectors={'.building-section':building?section:null,'.journal-opening h1':kind==='journal-water'?heading:null};
   if(kind==='journal-water'&&journalLettering)selectors['[data-journal-frond], [data-journal-coral]']=element();
-  const document={ hidden:false, documentElement:{scrollHeight:3000}, querySelector:s=>selectors[s] || null, querySelectorAll:s=>s==='canvas[data-art]'?(kind?[canvas]:[]):s==='[data-depth-panel]'?(building?panels:[]):s==='[data-depth]'?(building?depths:[]):[], addEventListener:(n,cb)=>events.set(n,cb) };
+  const document={ hidden:false, createElement:()=>{const template={content:{}};Object.defineProperty(template,'innerHTML',{set(markup){template.content.markup=markup;}});return template;}, documentElement:{scrollHeight:3000}, querySelector:s=>selectors[s] || null, querySelectorAll:s=>s==='canvas[data-art]'?(kind?[canvas]:[]):s==='[data-depth-panel]'?(building?panels:[]):s==='[data-depth]'?(building?depths:[]):[], addEventListener:(n,cb)=>events.set(n,cb) };
   const draw=()=>{calls++;if(failDraw)throw Error('Test draw failure');};
   const modules={
     './art/wave.mjs':{drawWave:draw},
@@ -73,7 +77,7 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
   });await mod.evaluate();
   const settle=()=>new Promise(resolve=>setImmediate(resolve));
   await settle();
-  return {api:mod.namespace,host,canvas,section,svg,chamber,panels,depths,imports,errors,frames,events,document,motion,observers,settle,warmups,resizers,
+  return {api:mod.namespace,inserted,host,canvas,section,svg,chamber,panels,depths,imports,errors,frames,events,document,motion,observers,settle,warmups,resizers,
     setDrawFailure(v){failDraw=v;},setBuildingFailure(v){failBuilding=v;},calls:()=>calls,
     clearCalls:()=>clearCalls,letterCalls:()=>letterCalls,boundsReads:()=>boundsReads,journalDraws,transforms,
     setJournalPosition(canvasY,headingY){canvasTop=canvasY;headingTop=headingY;},
@@ -96,6 +100,20 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
 {
   const t=await setup({kind:'reef',importFailure:'./art/reef.mjs'});await t.intersect();
   assert.ok(t.host.classList.contains('art-failed'));assert.equal(t.host.classList.contains('art-ready'),false);assert.equal(t.frames.size,0);
+}
+{
+  // The reef's still is over two megabytes. A working reef never puts it on the page, so it is never
+  // fetched; a reef that cannot be drawn shows it, once. Other artwork shows its description at once.
+  const still='<picture class="reef-still"></picture>';
+  const t=await setup({kind:'reef',fallback:still});
+  assert.deepEqual(t.inserted,[]);await t.intersect();
+  assert.ok(t.host.classList.contains('art-ready'));assert.deepEqual(t.inserted,[],'A working reef never fetches its still');
+  t.setDrawFailure(true);t.api.paint(t.api.canvasStates[0],1/60);
+  assert.ok(t.host.classList.contains('art-failed'));assert.deepEqual(t.inserted,[still],'A reef that cannot be drawn shows its still');
+  const failed=await setup({kind:'reef',fallback:still,importFailure:'./art/reef.mjs'});await failed.intersect();
+  assert.deepEqual(failed.inserted,[still],'A reef whose code cannot be loaded shows its still');
+  const wave=await setup({kind:'wave',fallback:'<p>The sea.</p>'});
+  assert.deepEqual(wave.inserted,['<p>The sea.</p>'],'Other artwork shows its description while it loads');
 }
 {
   const t=await setup({kind:'wave',firstFailure:true});
@@ -188,4 +206,4 @@ async function setup({kind, reduced=false, building=false, importFailure, firstF
   assert.equal(t.journalDraws.at(-1)[4].reducedMotion,true);
   assert.equal(t.frames.size,0,'Static repaint does not restart animation');
 }
-console.log('Artwork lifecycle passed: scoped imports, fallbacks, reef prewarm cancellation, reduced motion, cached journal viewport, offscreen heading/tab/canvas suspension and empty-page scroll handling.');
+console.log('Artwork lifecycle passed: scoped imports, fallbacks, the reef still kept off the page, reef prewarm cancellation, reduced motion, cached journal viewport, offscreen heading/tab/canvas suspension and empty-page scroll handling.');
